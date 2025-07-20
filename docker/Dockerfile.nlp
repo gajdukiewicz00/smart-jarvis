@@ -28,6 +28,9 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built application
 COPY --from=builder /app/dist ./dist
 
+# Create logs directory and set permissions
+RUN mkdir -p logs && chmod 755 logs
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001

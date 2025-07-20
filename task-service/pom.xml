@@ -14,6 +14,10 @@
     <name>Task Service</name>
     <description>REST API Service for Task Management</description>
 
+    <properties>
+        <spring.boot.version>3.2.0</spring.boot.version>
+    </properties>
+
     <dependencies>
         <!-- Spring Boot Starters -->
         <dependency>
@@ -71,6 +75,17 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring.boot.version}</version>
+                <configuration>
+                    <mainClass>com.smartjarvis.taskservice.TaskServiceApplication</mainClass>
+                    <layout>JAR</layout>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

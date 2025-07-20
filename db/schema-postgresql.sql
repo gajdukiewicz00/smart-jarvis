@@ -1,66 +1,72 @@
 -- =====================================================
--- Схема базы данных SmartJARVIS
+-- Схема базы данных SmartJARVIS для PostgreSQL
 -- Нормализованная структура с индексами и ограничениями
 -- =====================================================
 
 -- Создание базы данных
-CREATE DATABASE IF NOT EXISTS jarvis_db;
-USE jarvis_db;
+CREATE DATABASE jarvis_db;
+\c jarvis_db;
+
+-- Включение расширений
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- =====================================================
 -- Таблица пользователей
 -- =====================================================
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     first_name VARCHAR(50),
     last_name VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
     
     -- Индексы
-    INDEX idx_users_username (username),
-    INDEX idx_users_email (email),
-    INDEX idx_users_active (is_active),
-    INDEX idx_users_created_at (created_at)
+    CONSTRAINT idx_users_username UNIQUE (username),
+    CONSTRAINT idx_users_email UNIQUE (email)
 );
+
+CREATE INDEX idx_users_active ON users (is_active);
+CREATE INDEX idx_users_created_at ON users (created_at);
 
 -- =====================================================
 -- Таблица приоритетов (справочник)
 -- =====================================================
 CREATE TABLE priorities (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL UNIQUE,
     level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 4),
     color VARCHAR(7) DEFAULT '#000000',
     description TEXT,
     
     -- Индексы
-    INDEX idx_priorities_level (level),
-    INDEX idx_priorities_name (name)
+    CONSTRAINT idx_priorities_level CHECK (level BETWEEN 1 AND 4)
 );
+
+CREATE INDEX idx_priorities_level ON priorities (level);
+CREATE INDEX idx_priorities_name ON priorities (name);
 
 -- =====================================================
 -- Таблица статусов (справочник)
 -- =====================================================
 CREATE TABLE statuses (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL UNIQUE,
     description TEXT,
-    color VARCHAR(7) DEFAULT '#000000',
-    
-    -- Индексы
-    INDEX idx_statuses_name (name)
+    color VARCHAR(7) DEFAULT '#000000'
 );
+
+CREATE INDEX idx_statuses_name ON statuses (name);
 
 -- =====================================================
 -- Таблица категорий
 -- =====================================================
 CREATE TABLE categories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL,
     description TEXT,
     color VARCHAR(7) DEFAULT '#000000',
@@ -72,19 +78,18 @@ CREATE TABLE categories (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     
     -- Ограничения
-    CONSTRAINT uk_category_user_name UNIQUE (user_id, name),
-    
-    -- Индексы
-    INDEX idx_categories_user_id (user_id),
-    INDEX idx_categories_name (name),
-    INDEX idx_categories_active (is_active)
+    CONSTRAINT uk_category_user_name UNIQUE (user_id, name)
 );
+
+CREATE INDEX idx_categories_user_id ON categories (user_id);
+CREATE INDEX idx_categories_name ON categories (name);
+CREATE INDEX idx_categories_active ON categories (is_active);
 
 -- =====================================================
 -- Таблица тегов
 -- =====================================================
 CREATE TABLE tags (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
     color VARCHAR(7) DEFAULT '#000000',
     user_id UUID,
@@ -94,18 +99,17 @@ CREATE TABLE tags (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     
     -- Ограничения
-    CONSTRAINT uk_tag_user_name UNIQUE (user_id, name),
-    
-    -- Индексы
-    INDEX idx_tags_user_id (user_id),
-    INDEX idx_tags_name (name)
+    CONSTRAINT uk_tag_user_name UNIQUE (user_id, name)
 );
+
+CREATE INDEX idx_tags_user_id ON tags (user_id);
+CREATE INDEX idx_tags_name ON tags (name);
 
 -- =====================================================
 -- Таблица задач
 -- =====================================================
 CREATE TABLE tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(255) NOT NULL,
     description TEXT,
     user_id UUID NOT NULL,
@@ -114,7 +118,7 @@ CREATE TABLE tasks (
     status_id UUID,
     due_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     estimated_hours DECIMAL(5,2),
     actual_hours DECIMAL(5,2),
@@ -129,21 +133,21 @@ CREATE TABLE tasks (
     CONSTRAINT chk_estimated_hours CHECK (estimated_hours >= 0),
     CONSTRAINT chk_actual_hours CHECK (actual_hours >= 0),
     CONSTRAINT chk_due_date CHECK (due_date IS NULL OR due_date >= created_at),
-    CONSTRAINT chk_completed_date CHECK (completed_at IS NULL OR completed_at >= created_at),
-    
-    -- Индексы
-    INDEX idx_tasks_user_id (user_id),
-    INDEX idx_tasks_category_id (category_id),
-    INDEX idx_tasks_priority_id (priority_id),
-    INDEX idx_tasks_status_id (status_id),
-    INDEX idx_tasks_due_date (due_date),
-    INDEX idx_tasks_created_at (created_at),
-    INDEX idx_tasks_completed_at (completed_at),
-    INDEX idx_tasks_title (title),
-    INDEX idx_tasks_user_status (user_id, status_id),
-    INDEX idx_tasks_user_due (user_id, due_date),
-    INDEX idx_tasks_overdue (due_date, status_id) WHERE due_date < CURRENT_TIMESTAMP AND status_id != (SELECT id FROM statuses WHERE name = 'COMPLETED')
+    CONSTRAINT chk_completed_date CHECK (completed_at IS NULL OR completed_at >= created_at)
 );
+
+-- Индексы для задач
+CREATE INDEX idx_tasks_user_id ON tasks (user_id);
+CREATE INDEX idx_tasks_category_id ON tasks (category_id);
+CREATE INDEX idx_tasks_priority_id ON tasks (priority_id);
+CREATE INDEX idx_tasks_status_id ON tasks (status_id);
+CREATE INDEX idx_tasks_due_date ON tasks (due_date);
+CREATE INDEX idx_tasks_created_at ON tasks (created_at);
+CREATE INDEX idx_tasks_completed_at ON tasks (completed_at);
+CREATE INDEX idx_tasks_title ON tasks USING gin (to_tsvector('english', title));
+CREATE INDEX idx_tasks_user_status ON tasks (user_id, status_id);
+CREATE INDEX idx_tasks_user_due ON tasks (user_id, due_date);
+CREATE INDEX idx_tasks_overdue ON tasks (due_date, status_id) WHERE due_date < CURRENT_TIMESTAMP;
 
 -- =====================================================
 -- Таблица связи задач и тегов (N:M)
@@ -158,18 +162,17 @@ CREATE TABLE task_tags (
     
     -- Внешние ключи
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
-    
-    -- Индексы
-    INDEX idx_task_tags_task_id (task_id),
-    INDEX idx_task_tags_tag_id (tag_id)
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 );
+
+CREATE INDEX idx_task_tags_task_id ON task_tags (task_id);
+CREATE INDEX idx_task_tags_tag_id ON task_tags (tag_id);
 
 -- =====================================================
 -- Таблица напоминаний
 -- =====================================================
 CREATE TABLE reminders (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     task_id UUID NOT NULL,
     user_id UUID NOT NULL,
     reminder_date TIMESTAMP NOT NULL,
@@ -184,21 +187,20 @@ CREATE TABLE reminders (
     
     -- Ограничения
     CONSTRAINT chk_reminder_date CHECK (reminder_date >= created_at),
-    CONSTRAINT chk_sent_at CHECK (sent_at IS NULL OR sent_at >= created_at),
-    
-    -- Индексы
-    INDEX idx_reminders_task_id (task_id),
-    INDEX idx_reminders_user_id (user_id),
-    INDEX idx_reminders_date (reminder_date),
-    INDEX idx_reminders_sent (is_sent),
-    INDEX idx_reminders_pending (reminder_date, is_sent) WHERE is_sent = FALSE
+    CONSTRAINT chk_sent_at CHECK (sent_at IS NULL OR sent_at >= created_at)
 );
+
+CREATE INDEX idx_reminders_task_id ON reminders (task_id);
+CREATE INDEX idx_reminders_user_id ON reminders (user_id);
+CREATE INDEX idx_reminders_date ON reminders (reminder_date);
+CREATE INDEX idx_reminders_sent ON reminders (is_sent);
+CREATE INDEX idx_reminders_pending ON reminders (reminder_date, is_sent) WHERE is_sent = FALSE;
 
 -- =====================================================
 -- Таблица истории изменений задач
 -- =====================================================
 CREATE TABLE task_history (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     task_id UUID NOT NULL,
     user_id UUID NOT NULL,
     field_name VARCHAR(50) NOT NULL,
@@ -208,20 +210,19 @@ CREATE TABLE task_history (
     
     -- Внешние ключи
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    
-    -- Индексы
-    INDEX idx_task_history_task_id (task_id),
-    INDEX idx_task_history_user_id (user_id),
-    INDEX idx_task_history_changed_at (changed_at),
-    INDEX idx_task_history_field (field_name)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX idx_task_history_task_id ON task_history (task_id);
+CREATE INDEX idx_task_history_user_id ON task_history (user_id);
+CREATE INDEX idx_task_history_changed_at ON task_history (changed_at);
+CREATE INDEX idx_task_history_field ON task_history (field_name);
 
 -- =====================================================
 -- Таблица команд NLP
 -- =====================================================
 CREATE TABLE nlp_commands (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
     command_text TEXT NOT NULL,
     intent VARCHAR(100),
@@ -230,15 +231,14 @@ CREATE TABLE nlp_commands (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     -- Внешние ключи
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    
-    -- Индексы
-    INDEX idx_nlp_commands_user_id (user_id),
-    INDEX idx_nlp_commands_intent (intent),
-    INDEX idx_nlp_commands_processed_at (processed_at),
-    INDEX idx_nlp_commands_created_at (created_at),
-    INDEX idx_nlp_commands_entities USING GIN (entities)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX idx_nlp_commands_user_id ON nlp_commands (user_id);
+CREATE INDEX idx_nlp_commands_intent ON nlp_commands (intent);
+CREATE INDEX idx_nlp_commands_processed_at ON nlp_commands (processed_at);
+CREATE INDEX idx_nlp_commands_created_at ON nlp_commands (created_at);
+CREATE INDEX idx_nlp_commands_entities ON nlp_commands USING GIN (entities);
 
 -- =====================================================
 -- Вставка начальных данных
@@ -303,7 +303,7 @@ SELECT
     CASE 
         WHEN t.due_date IS NULL THEN NULL
         WHEN t.due_date < CURRENT_TIMESTAMP AND s.name != 'COMPLETED' THEN 'OVERDUE'
-        WHEN t.due_date <= DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 1 DAY) AND s.name != 'COMPLETED' THEN 'DUE_SOON'
+        WHEN t.due_date <= CURRENT_TIMESTAMP + INTERVAL '1 day' AND s.name != 'COMPLETED' THEN 'DUE_SOON'
         ELSE 'ON_TIME'
     END as urgency_status
 FROM tasks t
@@ -321,7 +321,7 @@ SELECT
     t.due_date,
     t.status_id,
     s.name as status_name,
-    GROUP_CONCAT(tag.name) as tags
+    string_agg(tag.name, ', ') as tags
 FROM tasks t
 LEFT JOIN statuses s ON t.status_id = s.id
 LEFT JOIN task_tags tt ON t.id = tt.task_id
@@ -346,60 +346,129 @@ LEFT JOIN statuses s ON t.status_id = s.id
 GROUP BY u.id, u.username;
 
 -- =====================================================
--- Триггеры для автоматического обновления
+-- Функции для автоматического обновления
 -- =====================================================
 
--- Триггер для автоматического обновления updated_at
-DELIMITER //
-CREATE TRIGGER tasks_update_trigger
-BEFORE UPDATE ON tasks
-FOR EACH ROW
+-- Функция для автоматического обновления updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
 BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
-END//
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Триггеры для автоматического обновления
+CREATE TRIGGER tasks_update_trigger
+    BEFORE UPDATE ON tasks
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER categories_update_trigger
-BEFORE UPDATE ON categories
-FOR EACH ROW
-BEGIN
-    SET NEW.updated_at = CURRENT_TIMESTAMP;
-END//
-DELIMITER ;
+    BEFORE UPDATE ON categories
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
--- Триггер для записи истории изменений задач
-DELIMITER //
-CREATE TRIGGER tasks_history_trigger
-AFTER UPDATE ON tasks
-FOR EACH ROW
+-- Функция для записи истории изменений задач
+CREATE OR REPLACE FUNCTION record_task_history()
+RETURNS TRIGGER AS $$
 BEGIN
     IF OLD.title != NEW.title THEN
         INSERT INTO task_history (task_id, user_id, field_name, old_value, new_value)
         VALUES (NEW.id, NEW.user_id, 'title', OLD.title, NEW.title);
     END IF;
     
-    IF OLD.description != NEW.description THEN
+    IF OLD.description IS DISTINCT FROM NEW.description THEN
         INSERT INTO task_history (task_id, user_id, field_name, old_value, new_value)
         VALUES (NEW.id, NEW.user_id, 'description', OLD.description, NEW.description);
     END IF;
     
-    IF OLD.category_id != NEW.category_id THEN
+    IF OLD.category_id IS DISTINCT FROM NEW.category_id THEN
         INSERT INTO task_history (task_id, user_id, field_name, old_value, new_value)
-        VALUES (NEW.id, NEW.user_id, 'category_id', OLD.category_id, NEW.category_id);
+        VALUES (NEW.id, NEW.user_id, 'category_id', OLD.category_id::text, NEW.category_id::text);
     END IF;
     
-    IF OLD.priority_id != NEW.priority_id THEN
+    IF OLD.priority_id IS DISTINCT FROM NEW.priority_id THEN
         INSERT INTO task_history (task_id, user_id, field_name, old_value, new_value)
-        VALUES (NEW.id, NEW.user_id, 'priority_id', OLD.priority_id, NEW.priority_id);
+        VALUES (NEW.id, NEW.user_id, 'priority_id', OLD.priority_id::text, NEW.priority_id::text);
     END IF;
     
-    IF OLD.status_id != NEW.status_id THEN
+    IF OLD.status_id IS DISTINCT FROM NEW.status_id THEN
         INSERT INTO task_history (task_id, user_id, field_name, old_value, new_value)
-        VALUES (NEW.id, NEW.user_id, 'status_id', OLD.status_id, NEW.status_id);
+        VALUES (NEW.id, NEW.user_id, 'status_id', OLD.status_id::text, NEW.status_id::text);
     END IF;
     
-    IF OLD.due_date != NEW.due_date THEN
+    IF OLD.due_date IS DISTINCT FROM NEW.due_date THEN
         INSERT INTO task_history (task_id, user_id, field_name, old_value, new_value)
-        VALUES (NEW.id, NEW.user_id, 'due_date', OLD.due_date, NEW.due_date);
+        VALUES (NEW.id, NEW.user_id, 'due_date', OLD.due_date::text, NEW.due_date::text);
     END IF;
-END//
-DELIMITER ;
+    
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Триггер для записи истории изменений
+CREATE TRIGGER tasks_history_trigger
+    AFTER UPDATE ON tasks
+    FOR EACH ROW
+    EXECUTE FUNCTION record_task_history();
+
+-- =====================================================
+-- Дополнительные функции для работы с задачами
+-- =====================================================
+
+-- Функция для поиска задач по тексту
+CREATE OR REPLACE FUNCTION search_tasks(search_term TEXT, user_id UUID)
+RETURNS TABLE(
+    id UUID,
+    title VARCHAR(255),
+    description TEXT,
+    due_date TIMESTAMP,
+    status_name VARCHAR(50),
+    priority_name VARCHAR(50),
+    category_name VARCHAR(100)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        t.id,
+        t.title,
+        t.description,
+        t.due_date,
+        s.name as status_name,
+        p.name as priority_name,
+        c.name as category_name
+    FROM tasks t
+    LEFT JOIN statuses s ON t.status_id = s.id
+    LEFT JOIN priorities p ON t.priority_id = p.id
+    LEFT JOIN categories c ON t.category_id = c.id
+    WHERE t.user_id = search_tasks.user_id
+    AND (
+        to_tsvector('english', t.title) @@ plainto_tsquery('english', search_term)
+        OR to_tsvector('english', t.description) @@ plainto_tsquery('english', search_term)
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для получения просроченных задач
+CREATE OR REPLACE FUNCTION get_overdue_tasks(user_id UUID)
+RETURNS TABLE(
+    id UUID,
+    title VARCHAR(255),
+    due_date TIMESTAMP,
+    days_overdue INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        t.id,
+        t.title,
+        t.due_date,
+        EXTRACT(DAY FROM (CURRENT_TIMESTAMP - t.due_date))::INTEGER as days_overdue
+    FROM tasks t
+    LEFT JOIN statuses s ON t.status_id = s.id
+    WHERE t.user_id = get_overdue_tasks.user_id
+    AND t.due_date < CURRENT_TIMESTAMP
+    AND s.name != 'COMPLETED';
+END;
+$$ LANGUAGE plpgsql; 

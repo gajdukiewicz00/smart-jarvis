@@ -38,6 +38,7 @@ const logger = createLogger({
 // Create Express app
 const app = express();
 const PORT = process.env['NLP_ENGINE_PORT'] || 8082;
+const TASK_SERVICE_URL = process.env['TASK_SERVICE_URL'] || 'http://localhost:8080';
 
 // Middleware
 app.use(helmet());
@@ -49,7 +50,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Initialize services
 const intentProcessor = new IntentProcessor();
-const nlpService = new NLPService(intentProcessor);
+const nlpService = new NLPService(intentProcessor, TASK_SERVICE_URL);
 
 // Register intent handlers
 const taskHandler = new TaskIntentHandler();
@@ -66,14 +67,15 @@ app.get('/health', (req, res) => {
         status: 'healthy',
         service: 'nlp-engine',
         timestamp: new Date().toISOString(),
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        taskServiceUrl: TASK_SERVICE_URL
     });
 });
 
 // Process intent endpoint
 app.post('/api/process', async (req, res) => {
     try {
-        const { text, context } = req.body;
+        const { text, context, execute = false } = req.body;
         
         if (!text) {
             return res.status(400).json({
@@ -85,6 +87,16 @@ app.post('/api/process', async (req, res) => {
         
         const result = await nlpService.processIntent(text, context);
         
+        // Execute action if requested
+        if (execute && result.intent.startsWith('task_')) {
+            const actionResult = await nlpService.executeTaskAction(result.intent, result.entities);
+            return res.json({
+                success: true,
+                data: actionResult,
+                original: result
+            });
+        }
+        
         logger.info(`Intent processed successfully: ${result.intent}`);
         
         return res.json({
@@ -94,6 +106,37 @@ app.post('/api/process', async (req, res) => {
         
     } catch (error) {
         logger.error('Error processing intent:', error);
+        return res.status(500).json({
+            error: 'Internal server error',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// Execute action endpoint
+app.post('/api/execute', async (req, res) => {
+    try {
+        const { intent, entities } = req.body;
+        
+        if (!intent) {
+            return res.status(400).json({
+                error: 'Intent is required'
+            });
+        }
+        
+        logger.info(`Executing action for intent: ${intent}`);
+        
+        const result = await nlpService.executeTaskAction(intent, entities);
+        
+        logger.info(`Action executed successfully: ${result.intent}`);
+        
+        return res.json({
+            success: true,
+            data: result
+        });
+        
+    } catch (error) {
+        logger.error('Error executing action:', error);
         return res.status(500).json({
             error: 'Internal server error',
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -117,6 +160,56 @@ app.get('/api/intents', (req, res) => {
     }
 });
 
+// Task service status endpoint
+app.get('/api/task-service/status', async (req, res) => {
+    try {
+        const isAvailable = await nlpService['taskServiceClient'].ping();
+        res.json({
+            success: true,
+            data: {
+                available: isAvailable,
+                url: TASK_SERVICE_URL
+            }
+        });
+    } catch (error) {
+        logger.error('Error checking task service status:', error);
+        res.status(500).json({
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Voice command examples endpoint
+app.get('/api/examples', (req, res) => {
+    const examples = {
+        task_management: [
+            "Create a task called 'Buy groceries'",
+            "Add a high priority task 'Finish project report'",
+            "Show my tasks",
+            "List pending tasks",
+            "Complete task 'Buy groceries'",
+            "Update task priority to urgent",
+            "Delete task 'Old task'",
+            "What are my task statistics?",
+            "How many tasks do I have?",
+            "Show completed tasks"
+        ],
+        natural_language: [
+            "I need to buy groceries",
+            "Remind me to call the doctor",
+            "What tasks are due today?",
+            "Mark the project task as done",
+            "Set priority to high for the meeting task",
+            "Show me all my pending work"
+        ]
+    };
+    
+    res.json({
+        success: true,
+        data: examples
+    });
+});
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     logger.error('Unhandled error:', err);
@@ -138,7 +231,9 @@ app.use('*', (req, res) => {
 app.listen(PORT, () => {
     logger.info(`NLP Engine server started on port ${PORT}`);
     logger.info(`Environment: ${process.env['NODE_ENV'] || 'development'}`);
+    logger.info(`Task Service URL: ${TASK_SERVICE_URL}`);
     logger.info(`Health check available at: http://localhost:${PORT}/health`);
+    logger.info(`API documentation available at: http://localhost:${PORT}/api/examples`);
 });
 
 // Graceful shutdown

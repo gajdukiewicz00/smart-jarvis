@@ -12,12 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from loguru import logger
+import httpx
+import os
 
 from speech_recognition import Recognizer, Microphone
 import pyttsx3
 import whisper
 import tempfile
-import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +40,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configuration
+NLP_ENGINE_URL = os.getenv("NLP_ENGINE_URL", "http://localhost:8082")
+SPEECH_SERVICE_PORT = int(os.getenv("SPEECH_SERVICE_PORT", "8083"))
+
 # Pydantic models
 class TextToSpeechRequest(BaseModel):
     text: str
@@ -55,12 +60,30 @@ class HealthResponse(BaseModel):
     status: str
     service: str
     timestamp: str
+    nlp_engine_url: str
+
+class VoiceCommandResponse(BaseModel):
+    original_text: str
+    nlp_result: dict
+    tts_response: str
 
 # Initialize speech components
 recognizer = Recognizer()
-microphone = Microphone()
+microphone = None  # Initialize lazily
 whisper_model = None
 tts_engine = None
+
+def get_microphone():
+    """Get microphone instance (lazy initialization)"""
+    global microphone
+    if microphone is None:
+        try:
+            microphone = Microphone()
+        except Exception as e:
+            logger.warning(f"Could not initialize microphone: {e}")
+            # Return a dummy microphone for testing
+            microphone = None
+    return microphone
 
 def initialize_speech_components():
     """Initialize speech recognition and TTS components"""
@@ -72,22 +95,85 @@ def initialize_speech_components():
         whisper_model = whisper.load_model("base")
         logger.info("Whisper model loaded successfully")
         
-        # Initialize TTS engine
-        logger.info("Initializing TTS engine...")
-        tts_engine = pyttsx3.init()
-        
-        # Configure TTS engine
-        voices = tts_engine.getProperty('voices')
-        if voices:
-            tts_engine.setProperty('voice', voices[0].id)
-        
-        tts_engine.setProperty('rate', 150)
-        tts_engine.setProperty('volume', 1.0)
-        logger.info("TTS engine initialized successfully")
+        # TTS engine will be initialized lazily when needed
+        logger.info("TTS engine will be initialized on demand")
         
     except Exception as e:
         logger.error(f"Error initializing speech components: {e}")
         raise
+
+def get_tts_engine():
+    """Get TTS engine instance (lazy initialization)"""
+    global tts_engine
+    if tts_engine is None:
+        try:
+            logger.info("Initializing TTS engine...")
+            # Temporarily disable TTS to avoid espeak issues
+            logger.warning("TTS engine disabled due to espeak issues")
+            tts_engine = None
+        except Exception as e:
+            logger.error(f"Error initializing TTS engine: {e}")
+            tts_engine = None
+    return tts_engine
+
+async def process_with_nlp(text: str) -> dict:
+    """Process text with NLP Engine"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{NLP_ENGINE_URL}/api/process",
+                json={
+                    "text": text,
+                    "context": {},
+                    "execute": False
+                },
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"NLP Engine error: {response.status_code} - {response.text}")
+                return {
+                    "success": False,
+                    "error": f"NLP Engine returned {response.status_code}"
+                }
+                
+    except Exception as e:
+        logger.error(f"Error communicating with NLP Engine: {e}")
+        return {
+            "success": False,
+            "error": f"Communication error: {str(e)}"
+        }
+
+async def execute_nlp_action(intent: str, entities: dict) -> dict:
+    """Execute action with NLP Engine"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{NLP_ENGINE_URL}/api/execute",
+                json={
+                    "intent": intent,
+                    "entities": entities
+                },
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"NLP Engine execute error: {response.status_code} - {response.text}")
+                return {
+                    "success": False,
+                    "error": f"NLP Engine execute returned {response.status_code}"
+                }
+                
+    except Exception as e:
+        logger.error(f"Error executing action with NLP Engine: {e}")
+        return {
+            "success": False,
+            "error": f"Execute error: {str(e)}"
+        }
 
 @app.on_event("startup")
 async def startup_event():
@@ -107,7 +193,8 @@ async def health_check():
     return HealthResponse(
         status="healthy",
         service="speech-service",
-        timestamp=asyncio.get_event_loop().time().__str__()
+        timestamp=asyncio.get_event_loop().time().__str__(),
+        nlp_engine_url=NLP_ENGINE_URL
     )
 
 @app.post("/api/speech-to-text", response_model=SpeechToTextResponse)
@@ -158,27 +245,69 @@ async def text_to_speech(request: TextToSpeechRequest):
     try:
         logger.info(f"Processing text-to-speech: {request.text[:50]}...")
         
-        # Configure TTS engine with request parameters
-        if request.voice != "default":
-            voices = tts_engine.getProperty('voices')
-            for voice in voices:
-                if request.voice in voice.name:
-                    tts_engine.setProperty('voice', voice.id)
-                    break
-        
-        tts_engine.setProperty('rate', request.rate)
-        tts_engine.setProperty('volume', request.volume)
-        
-        # Generate speech
-        tts_engine.say(request.text)
-        tts_engine.runAndWait()
-        
-        logger.info("Text-to-speech completed successfully")
-        return {"success": True, "message": "Speech generated successfully"}
+        # TTS is temporarily disabled
+        logger.warning("TTS functionality is temporarily disabled")
+        return {"success": False, "message": "TTS functionality is temporarily disabled"}
         
     except Exception as e:
         logger.error(f"Error in text-to-speech: {e}")
         raise HTTPException(status_code=500, detail=f"Text-to-speech error: {str(e)}")
+
+@app.post("/api/voice-command", response_model=VoiceCommandResponse)
+async def process_voice_command(audio_file: UploadFile = File(...)):
+    """
+    Process voice command: speech-to-text -> NLP processing -> text-to-speech response
+    """
+    try:
+        logger.info(f"Processing voice command from file: {audio_file.filename}")
+        
+        # Step 1: Speech to text
+        stt_response = await speech_to_text(audio_file)
+        original_text = stt_response.text
+        
+        if not original_text.strip():
+            return VoiceCommandResponse(
+                original_text="",
+                nlp_result={"success": False, "error": "No speech detected"},
+                tts_response="I didn't hear anything. Please try again."
+            )
+        
+        logger.info(f"Recognized speech: {original_text}")
+        
+        # Step 2: Process with NLP Engine
+        nlp_result = await process_with_nlp(original_text)
+        
+        if not nlp_result.get("success", False):
+            tts_response = "I'm sorry, I couldn't process your request. Please try again."
+        else:
+            nlp_data = nlp_result.get("data", {})
+            tts_response = nlp_data.get("response", "I understood your request.")
+            
+            # Step 3: Execute action if it's a task-related command
+            if nlp_data.get("intent", "").startswith("task_"):
+                execute_result = await execute_nlp_action(
+                    nlp_data["intent"], 
+                    nlp_data.get("entities", {})
+                )
+                
+                if execute_result.get("success", False):
+                    execute_data = execute_result.get("data", {})
+                    tts_response = execute_data.get("response", tts_response)
+                else:
+                    tts_response = "I encountered an error while processing your request."
+        
+        # Step 4: Text to speech response
+        await text_to_speech(TextToSpeechRequest(text=tts_response))
+        
+        return VoiceCommandResponse(
+            original_text=original_text,
+            nlp_result=nlp_result,
+            tts_response=tts_response
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in voice command processing: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice command error: {str(e)}")
 
 @app.post("/api/listen")
 async def listen_for_speech():
@@ -188,7 +317,11 @@ async def listen_for_speech():
     try:
         logger.info("Starting speech recognition...")
         
-        with microphone as source:
+        microphone_instance = get_microphone()
+        if microphone_instance is None:
+            raise HTTPException(status_code=503, detail="Microphone not available")
+
+        with microphone_instance as source:
             # Adjust for ambient noise
             recognizer.adjust_for_ambient_noise(source, duration=0.5)
             
@@ -198,24 +331,27 @@ async def listen_for_speech():
             # Recognize speech
             try:
                 text = recognizer.recognize_google(audio)
-                confidence = 0.8  # Google doesn't provide confidence
+                logger.info(f"Recognized speech: {text}")
                 
-                response = SpeechToTextResponse(
-                    text=text,
-                    confidence=confidence,
-                    language="en"
-                )
+                # Process with NLP Engine
+                nlp_result = await process_with_nlp(text)
                 
-                logger.info(f"Speech recognized: {text}")
-                return response
+                return {
+                    "success": True,
+                    "text": text,
+                    "nlp_result": nlp_result
+                }
                 
             except Exception as e:
-                logger.warning(f"Could not recognize speech: {e}")
-                raise HTTPException(status_code=400, detail="Could not recognize speech")
+                logger.error(f"Speech recognition error: {e}")
+                return {
+                    "success": False,
+                    "error": "Could not recognize speech"
+                }
                 
     except Exception as e:
-        logger.error(f"Error in speech recognition: {e}")
-        raise HTTPException(status_code=500, detail=f"Speech recognition error: {str(e)}")
+        logger.error(f"Error in listen endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Listen error: {str(e)}")
 
 @app.get("/api/voices")
 async def get_available_voices():
@@ -223,28 +359,42 @@ async def get_available_voices():
     Get available TTS voices
     """
     try:
-        voices = tts_engine.getProperty('voices')
-        voice_list = []
-        
-        for voice in voices:
-            voice_list.append({
-                "id": voice.id,
-                "name": voice.name,
-                "languages": voice.languages
-            })
-        
-        return {"voices": voice_list}
+        # TTS is temporarily disabled
+        logger.warning("TTS functionality is temporarily disabled")
+        return {"voices": [], "message": "TTS functionality is temporarily disabled"}
         
     except Exception as e:
         logger.error(f"Error getting voices: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting voices: {str(e)}")
 
+@app.get("/api/nlp-status")
+async def get_nlp_status():
+    """
+    Check NLP Engine status
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{NLP_ENGINE_URL}/health", timeout=5.0)
+            
+            return {
+                "success": response.status_code == 200,
+                "nlp_engine_status": "healthy" if response.status_code == 200 else "unhealthy",
+                "nlp_engine_url": NLP_ENGINE_URL
+            }
+            
+    except Exception as e:
+        logger.error(f"Error checking NLP Engine status: {e}")
+        return {
+            "success": False,
+            "nlp_engine_status": "unreachable",
+            "nlp_engine_url": NLP_ENGINE_URL,
+            "error": str(e)
+        }
+
 if __name__ == "__main__":
-    # Run the application
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8083,
-        reload=True,
-        log_level="info"
+        port=SPEECH_SERVICE_PORT,
+        reload=True
     ) 

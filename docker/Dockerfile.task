@@ -2,24 +2,22 @@ FROM openjdk:21-jdk-slim
 
 WORKDIR /app
 
-# Copy Maven files
-COPY pom.xml .
-COPY mvnw .
-COPY .mvn .mvn
+# Install Maven
+RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
 
-# Copy source code
-COPY src src
+# Copy entire project context
+COPY . .
 
 # Build the application
-RUN ./mvnw clean package -DskipTests
+RUN mvn clean package -DskipTests
 
 # Create runtime image
-FROM openjdk:21-jre-slim
+FROM openjdk:21-slim
 
 WORKDIR /app
 
 # Copy the built jar
-COPY --from=0 /app/target/*.jar app.jar
+COPY --from=0 /app/task-service/target/*.jar app.jar
 
 # Create non-root user
 RUN addgroup --system javauser && adduser --system --ingroup javauser javauser

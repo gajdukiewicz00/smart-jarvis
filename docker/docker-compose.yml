@@ -20,8 +20,8 @@ services:
   # Task Service (Spring Boot)
   task-service:
     build:
-      context: ../task-service
-      dockerfile: ../docker/Dockerfile.task
+      context: ..
+      dockerfile: docker/Dockerfile.task
     container_name: jarvis-task-service
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -46,7 +46,7 @@ services:
     environment:
       NODE_ENV: production
       NLP_ENGINE_PORT: 8082
-      TASK_SERVICE_URL: http://task-service:8081
+      TASK_SERVICE_URL: http://task-service:8081/api/v1
     ports:
       - "8082:8082"
     depends_on:
@@ -107,6 +107,7 @@ services:
 volumes:
   postgres_data:
   speech_audio:
+  grafana_data:
 
 networks:
   jarvis-network:
