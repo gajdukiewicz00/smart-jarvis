@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml" fx:controller="com.smartjarvis.desktop.presentation.TaskManagerController">
+    <top>
+        <Label text="SmartJARVIS Task Manager" style="-fx-font-size: 20px; -fx-padding: 10 0 10 0;"/>
+    </top>
+    <center>
+        <TableView fx:id="taskTable" prefHeight="400" prefWidth="600">
+            <columns>
+                <TableColumn fx:id="titleColumn" text="Title" prefWidth="150"/>
+                <TableColumn fx:id="descriptionColumn" text="Description" prefWidth="200"/>
+                <TableColumn fx:id="priorityColumn" text="Priority" prefWidth="80"/>
+                <TableColumn fx:id="statusColumn" text="Status" prefWidth="80"/>
+                <TableColumn fx:id="dueDateColumn" text="Due Date" prefWidth="90"/>
+            </columns>
+        </TableView>
+    </center>
+    <bottom>
+        <VBox spacing="8" padding="10">
+            <HBox spacing="8">
+                <TextField fx:id="titleField" promptText="Title" prefWidth="120"/>
+                <TextField fx:id="descriptionField" promptText="Description" prefWidth="180"/>
+                <ComboBox fx:id="priorityBox" promptText="Priority" prefWidth="90"/>
+                <DatePicker fx:id="dueDatePicker" promptText="Due Date" prefWidth="110"/>
+                <Button text="Add" onAction="#onAddTask"/>
+                <Button text="Update" onAction="#onUpdateTask"/>
+                <Button text="Delete" onAction="#onDeleteTask"/>
+                <Button text="Complete" onAction="#onCompleteTask"/>
+                <Button text="Refresh" onAction="#onRefresh"/>
+            </HBox>
+            <Label fx:id="statusLabel" textFill="red"/>
+        </VBox>
+    </bottom>
+</BorderPane> 
