@@ -1,36 +1,65 @@
-import { IntentProcessor, IntentResult } from './IntentProcessor';
+import { IntentProcessor } from './IntentProcessor';
 import { TaskServiceClient } from './TaskServiceClient';
+
+// Simple cache for NLP results
+const nlpCache = new Map<string, any>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export interface IntentResult {
+    intent: string;
+    confidence: number;
+    entities: any;
+    response?: string;
+}
 
 export class NLPService {
     private intentProcessor: IntentProcessor;
     private taskServiceClient: TaskServiceClient;
 
-    constructor(intentProcessor: IntentProcessor, taskServiceUrl?: string) {
+    constructor(intentProcessor: IntentProcessor, taskServiceUrl: string) {
         this.intentProcessor = intentProcessor;
         this.taskServiceClient = new TaskServiceClient(taskServiceUrl);
     }
 
     async processIntent(text: string, context?: any): Promise<IntentResult> {
-        // Check if Task Service is available
-        const isTaskServiceAvailable = await this.taskServiceClient.ping();
-        
-        if (!isTaskServiceAvailable) {
-            return {
-                intent: 'service_unavailable',
-                confidence: 1.0,
-                entities: { service: 'task-service' },
-                response: 'Task service is currently unavailable. Please try again later.'
-            };
+        // Check cache first
+        const cacheKey = `${text.toLowerCase()}_${JSON.stringify(context || {})}`;
+        const cached = nlpCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+            return cached.result;
         }
 
-        // Process intent with enhanced context
-        const result = await this.intentProcessor.processIntent(text, {
-            ...context,
-            taskServiceAvailable: isTaskServiceAvailable
-        });
+        try {
+            const result = await this.intentProcessor.processIntent(text, context);
+            
+            // Cache the result
+            nlpCache.set(cacheKey, {
+                result,
+                timestamp: Date.now()
+            });
 
-        // Enhance response based on intent and available data
-        return await this.enhanceResponse(result, text);
+            // Clean up old cache entries
+            this.cleanupCache();
+
+            return result;
+        } catch (error) {
+            console.error('Error processing intent:', error);
+            return {
+                intent: 'error',
+                confidence: 0,
+                entities: { error: error instanceof Error ? error.message : 'Unknown error' },
+                response: 'Sorry, I encountered an error processing your request.'
+            };
+        }
+    }
+
+    private cleanupCache() {
+        const now = Date.now();
+        for (const [key, value] of nlpCache.entries()) {
+            if (now - value.timestamp > CACHE_TTL) {
+                nlpCache.delete(key);
+            }
+        }
     }
 
     private async enhanceResponse(result: IntentResult, originalText: string): Promise<IntentResult> {

@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     espeak \
     espeak-data \
+    pulseaudio \
+    pulseaudio-utils \
+    alsa-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -27,8 +30,8 @@ RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Create audio directory
-RUN mkdir -p /app/audio && chown appuser:appuser /app/audio
+# Create audio directory and logs directory
+RUN mkdir -p /app/audio /app/logs && chown appuser:appuser /app/audio /app/logs
 
 # Expose port
 EXPOSE 8083

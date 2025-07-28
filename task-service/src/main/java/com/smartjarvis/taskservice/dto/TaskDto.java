@@ -1,6 +1,7 @@
 package com.smartjarvis.taskservice.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.smartjarvis.taskservice.domain.Task;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -9,29 +10,41 @@ import java.util.UUID;
 
 public class TaskDto {
     
+    @JsonProperty("id")
     private UUID id;
     
     @NotBlank(message = "Title is required")
     @Size(max = 255, message = "Title must not exceed 255 characters")
+    @JsonProperty("title")
     private String title;
     
     @Size(max = 1000, message = "Description must not exceed 1000 characters")
+    @JsonProperty("description")
     private String description;
     
+    @JsonProperty("priority")
     private Task.TaskPriority priority;
+    
+    @JsonProperty("status")
     private Task.TaskStatus status;
+    
+    @JsonProperty("category")
     private String category;
     
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonProperty("dueDate")
     private LocalDateTime dueDate;
     
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonProperty("createdAt")
     private LocalDateTime createdAt;
     
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonProperty("updatedAt")
     private LocalDateTime updatedAt;
     
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonProperty("completedAt")
     private LocalDateTime completedAt;
     
     // Constructors

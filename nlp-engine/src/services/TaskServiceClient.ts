@@ -25,7 +25,7 @@ export class TaskServiceClient {
     private client: AxiosInstance;
     private baseUrl: string;
 
-    constructor(baseUrl: string = 'http://localhost:8080') {
+    constructor(baseUrl: string = 'http://localhost:8081') {
         this.baseUrl = baseUrl;
         this.client = axios.create({
             baseURL: this.baseUrl,

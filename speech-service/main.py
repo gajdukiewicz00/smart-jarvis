@@ -6,19 +6,21 @@ Handles speech-to-text and text-to-speech functionality
 
 import asyncio
 import logging
+import tempfile
+import os
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
 from loguru import logger
 import httpx
-import os
 
 from speech_recognition import Recognizer, Microphone
-import pyttsx3
 import whisper
-import tempfile
+from gtts import gTTS
+import io
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -47,7 +49,7 @@ SPEECH_SERVICE_PORT = int(os.getenv("SPEECH_SERVICE_PORT", "8083"))
 # Pydantic models
 class TextToSpeechRequest(BaseModel):
     text: str
-    voice: Optional[str] = "default"
+    voice: Optional[str] = "en"  # Language code
     rate: Optional[int] = 150
     volume: Optional[float] = 1.0
 
@@ -71,7 +73,6 @@ class VoiceCommandResponse(BaseModel):
 recognizer = Recognizer()
 microphone = None  # Initialize lazily
 whisper_model = None
-tts_engine = None
 
 def get_microphone():
     """Get microphone instance (lazy initialization)"""
@@ -86,8 +87,8 @@ def get_microphone():
     return microphone
 
 def initialize_speech_components():
-    """Initialize speech recognition and TTS components"""
-    global whisper_model, tts_engine
+    """Initialize speech recognition components"""
+    global whisper_model
     
     try:
         # Initialize Whisper model
@@ -95,26 +96,28 @@ def initialize_speech_components():
         whisper_model = whisper.load_model("base")
         logger.info("Whisper model loaded successfully")
         
-        # TTS engine will be initialized lazily when needed
-        logger.info("TTS engine will be initialized on demand")
-        
     except Exception as e:
         logger.error(f"Error initializing speech components: {e}")
         raise
 
-def get_tts_engine():
-    """Get TTS engine instance (lazy initialization)"""
-    global tts_engine
-    if tts_engine is None:
-        try:
-            logger.info("Initializing TTS engine...")
-            # Temporarily disable TTS to avoid espeak issues
-            logger.warning("TTS engine disabled due to espeak issues")
-            tts_engine = None
-        except Exception as e:
-            logger.error(f"Error initializing TTS engine: {e}")
-            tts_engine = None
-    return tts_engine
+async def text_to_speech_gtts(text: str, language: str = "en") -> bytes:
+    """Convert text to speech using gTTS"""
+    try:
+        logger.info(f"Converting text to speech: {text[:50]}... (language: {language})")
+        
+        # Create gTTS object
+        tts = gTTS(text=text, lang=language, slow=False)
+        
+        # Save to bytes buffer
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        
+        return audio_buffer.getvalue()
+        
+    except Exception as e:
+        logger.error(f"Error in gTTS: {e}")
+        raise
 
 async def process_with_nlp(text: str) -> dict:
     """Process text with NLP Engine"""
@@ -205,9 +208,17 @@ async def speech_to_text(audio_file: UploadFile = File(...)):
     try:
         logger.info(f"Processing speech-to-text for file: {audio_file.filename}")
         
+        # Validate file size (max 10MB)
+        content = await audio_file.read()
+        if len(content) > 10 * 1024 * 1024:  # 10MB limit
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
+        
+        # Validate file type
+        if not audio_file.content_type or not audio_file.content_type.startswith('audio/'):
+            raise HTTPException(status_code=400, detail="Invalid file type. Only audio files are allowed.")
+        
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
-            content = await audio_file.read()
             temp_file.write(content)
             temp_file_path = temp_file.name
         
@@ -240,14 +251,26 @@ async def speech_to_text(audio_file: UploadFile = File(...)):
 @app.post("/api/text-to-speech")
 async def text_to_speech(request: TextToSpeechRequest):
     """
-    Convert text to speech
+    Convert text to speech using gTTS
     """
     try:
         logger.info(f"Processing text-to-speech: {request.text[:50]}...")
         
-        # TTS is temporarily disabled
-        logger.warning("TTS functionality is temporarily disabled")
-        return {"success": False, "message": "TTS functionality is temporarily disabled"}
+        # Convert text to speech
+        audio_data = await text_to_speech_gtts(request.text, request.voice)
+        
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+            temp_file.write(audio_data)
+            temp_file_path = temp_file.name
+        
+        # Return audio file
+        return FileResponse(
+            temp_file_path,
+            media_type="audio/mpeg",
+            filename="speech.mp3",
+            background=lambda: os.unlink(temp_file_path)  # Clean up after sending
+        )
         
     except Exception as e:
         logger.error(f"Error in text-to-speech: {e}")
@@ -296,8 +319,9 @@ async def process_voice_command(audio_file: UploadFile = File(...)):
                 else:
                     tts_response = "I encountered an error while processing your request."
         
-        # Step 4: Text to speech response
-        await text_to_speech(TextToSpeechRequest(text=tts_response))
+        # Step 4: Text to speech response (async)
+        # Note: We don't wait for TTS here, just return the response
+        # Client can call TTS endpoint separately if needed
         
         return VoiceCommandResponse(
             original_text=original_text,
@@ -356,12 +380,28 @@ async def listen_for_speech():
 @app.get("/api/voices")
 async def get_available_voices():
     """
-    Get available TTS voices
+    Get available TTS voices/languages
     """
     try:
-        # TTS is temporarily disabled
-        logger.warning("TTS functionality is temporarily disabled")
-        return {"voices": [], "message": "TTS functionality is temporarily disabled"}
+        # Return supported languages for gTTS
+        supported_languages = {
+            "en": "English",
+            "ru": "Russian", 
+            "es": "Spanish",
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "zh": "Chinese"
+        }
+        
+        return {
+            "voices": supported_languages,
+            "default": "en",
+            "message": "gTTS supports multiple languages"
+        }
         
     except Exception as e:
         logger.error(f"Error getting voices: {e}")

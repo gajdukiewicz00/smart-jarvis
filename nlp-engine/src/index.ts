@@ -38,7 +38,7 @@ const logger = createLogger({
 // Create Express app
 const app = express();
 const PORT = process.env['NLP_ENGINE_PORT'] || 8082;
-const TASK_SERVICE_URL = process.env['TASK_SERVICE_URL'] || 'http://localhost:8080';
+const TASK_SERVICE_URL = process.env['TASK_SERVICE_URL'] || 'http://localhost:8081';
 
 // Middleware
 app.use(helmet());
