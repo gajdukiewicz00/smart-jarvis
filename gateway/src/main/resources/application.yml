@@ -19,14 +19,14 @@ spring:
           predicates:
             - Path=/api/v1/tasks/**
           filters:
-            - name: CircuitBreaker
-              args:
-                name: task-service-circuit-breaker
-                fallbackUri: forward:/fallback/task-service
+            # - name: CircuitBreaker
+            #   args:
+            #     name: task-service-circuit-breaker
+            #     fallbackUri: forward:/fallback/task-service
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
             - name: Retry
               args:
                 retries: 3
@@ -43,20 +43,19 @@ spring:
           predicates:
             - Path=/api/v1/nlp/**
           filters:
-            - name: CircuitBreaker
-              args:
-                name: nlp-engine-circuit-breaker
-                fallbackUri: forward:/fallback/nlp-engine
+            # - name: CircuitBreaker
+            #   args:
+            #     name: nlp-engine-circuit-breaker
+            #     fallbackUri: forward:/fallback/nlp-engine
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 15
-                redis-rate-limiter.burstCapacity: 30
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
             - name: Retry
               args:
                 retries: 2
                 statuses: BAD_GATEWAY,INTERNAL_SERVER_ERROR
                 methods: GET,POST
-            - StripPrefix=1
           metadata:
             response-timeout: 10000
             connect-timeout: 5000
@@ -67,14 +66,14 @@ spring:
           predicates:
             - Path=/api/v1/speech/**
           filters:
-            - name: CircuitBreaker
-              args:
-                name: speech-service-circuit-breaker
-                fallbackUri: forward:/fallback/speech-service
+            # - name: CircuitBreaker
+            #   args:
+            #     name: speech-service-circuit-breaker
+            #     fallbackUri: forward:/fallback/speech-service
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 5
-                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.replenishRate: 30
+                redis-rate-limiter.burstCapacity: 60
             - name: Retry
               args:
                 retries: 2
@@ -92,17 +91,17 @@ spring:
             - Path=/health/**
           filters:
             - StripPrefix=0
-            - name: CircuitBreaker
-              args:
-                name: health-check-circuit-breaker
-                fallbackUri: forward:/fallback/health
+            # - name: CircuitBreaker
+            #   args:
+            #     name: health-check-circuit-breaker
+            #     fallbackUri: forward:/fallback/health
 
   # Redis Configuration for Rate Limiting
   data:
     redis:
       host: localhost
       port: 6379
-      timeout: 2000ms
+      timeout: 9000ms
       lettuce:
         pool:
           max-active: 8

@@ -70,22 +70,22 @@ services:
 
   # Speech Service (Python/FastAPI)
   speech-service:
-    build:
-      context: ../speech-service
-      dockerfile: Dockerfile
-    container_name: jarvis-speech-service
-    environment:
-      SPEECH_SERVICE_PORT: 8083
-      NLP_ENGINE_URL: http://nlp-engine:8082
-    ports:
-      - "8083:8083"
-    volumes:
-      - speech_audio:/app/audio
-    depends_on:
-      - nlp-engine
-    networks:
-      - jarvis-network
-    restart: unless-stopped
+     build:
+       context: ../speech-service
+       dockerfile: Dockerfile
+     container_name: jarvis-speech-service
+     environment:
+       SPEECH_SERVICE_PORT: 8083
+       NLP_ENGINE_URL: http://nlp-engine:8082
+     ports:
+       - "8083:8083"
+     volumes:
+       - speech_audio:/app/audio
+     depends_on:
+       - nlp-engine
+     networks:
+       - jarvis-network
+     restart: unless-stopped
 
   # Gateway Service (Spring Cloud Gateway)
   gateway:
@@ -104,7 +104,6 @@ services:
       - redis
       - task-service
       - nlp-engine
-      - speech-service
     networks:
       - jarvis-network
     restart: unless-stopped

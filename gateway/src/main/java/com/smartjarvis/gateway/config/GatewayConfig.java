@@ -84,29 +84,20 @@ public class GatewayConfig implements WebFluxConfigurer {
      */
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
-        if (securityEnabled) {
-            return http
-                    .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                    .authorizeExchange(exchanges -> exchanges
-                            .pathMatchers("/actuator/**").permitAll()
-                            .pathMatchers("/health/**").permitAll()
-                            .pathMatchers("/api/v1/tasks/**").authenticated()
-                            .pathMatchers("/api/v1/nlp/**").authenticated()
-                            .pathMatchers("/api/v1/speech/**").authenticated()
-                            .anyExchange().authenticated()
-                    )
-                    .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
-                    .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
-                    .build();
-        } else {
-            return http
-                    .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                    .authorizeExchange(exchanges -> exchanges
-                            .anyExchange().permitAll()
-                    )
-                    .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
-                    .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
-                    .build();
-        }
+        return http
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(ServerHttpSecurity.CorsSpec::disable)
+                .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers("/actuator/**").permitAll()
+                        .pathMatchers("/health/**").permitAll()
+                        .pathMatchers("/api/v1/tasks/**").permitAll()
+                        .pathMatchers("/api/v1/nlp/**").permitAll()
+                        .pathMatchers("/api/v1/speech/**").permitAll()
+                        .pathMatchers("/fallback/**").permitAll()
+                        .anyExchange().permitAll()
+                )
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .build();
     }
 }
