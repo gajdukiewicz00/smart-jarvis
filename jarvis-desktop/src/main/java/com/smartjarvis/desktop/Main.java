@@ -1,5 +1,6 @@
 package com.smartjarvis.desktop;
 
+import com.smartjarvis.desktop.infrastructure.services.ServiceFactory;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
@@ -26,6 +27,9 @@ public class Main extends Application {
         try {
             logger.info("Starting SmartJARVIS Desktop Application...");
             
+            // Initialize services with real HTTP clients
+            initializeServices();
+            
             // Load the TaskManager FXML file
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/presentation/TaskManagerView.fxml"));
             Parent root = loader.load();
@@ -45,6 +49,7 @@ public class Main extends Application {
             // Handle window close event
             primaryStage.setOnCloseRequest(event -> {
                 logger.info("Application closing...");
+                cleanupServices();
                 Platform.exit();
                 System.exit(0);
             });
@@ -61,15 +66,59 @@ public class Main extends Application {
         }
     }
     
+    /**
+     * Initialize all services with real HTTP clients
+     */
+    private void initializeServices() {
+        try {
+            logger.info("Initializing services with real HTTP clients...");
+            
+            // Create services using factory
+            var taskServiceClient = ServiceFactory.createTaskServiceClient();
+            var nlpService = ServiceFactory.createNLPService();
+            var notificationService = ServiceFactory.createNotificationService();
+            var speechService = ServiceFactory.createSpeechService();
+            
+            // Test connection to task service
+            if (taskServiceClient instanceof com.smartjarvis.desktop.infrastructure.services.impl.HttpTaskServiceClient) {
+                com.smartjarvis.desktop.infrastructure.services.impl.HttpTaskServiceClient httpClient = 
+                    (com.smartjarvis.desktop.infrastructure.services.impl.HttpTaskServiceClient) taskServiceClient;
+                
+                if (httpClient.testConnection()) {
+                    logger.info("Task service connection successful");
+                } else {
+                    logger.warning("Task service connection failed - using fallback mode");
+                }
+            }
+            
+            logger.info("Services initialized successfully");
+            
+        } catch (Exception e) {
+            logger.severe("Error initializing services: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Cleanup services on application shutdown
+     */
+    private void cleanupServices() {
+        try {
+            logger.info("Cleaning up services...");
+            // Add any cleanup logic here if needed
+            logger.info("Services cleanup completed");
+        } catch (Exception e) {
+            logger.warning("Error during services cleanup: " + e.getMessage());
+        }
+    }
+    
     @Override
     public void stop() {
         logger.info("Stopping SmartJARVIS Desktop Application...");
         
         // Cleanup resources
         try {
-            // Stop any background services
-            // Close database connections
-            // Shutdown thread pools
+            cleanupServices();
             logger.info("Application cleanup completed");
         } catch (Exception e) {
             logger.warning("Error during application cleanup: " + e.getMessage());

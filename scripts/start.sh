@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# SmartJARVIS Start Script
+# Starts all services in the correct order
+
 set -e
 
 echo "🚀 Starting SmartJARVIS services..."
@@ -13,7 +16,11 @@ NC='\033[0m' # No Color
 
 # Function to print colored output
 print_status() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
 print_warning() {
@@ -24,11 +31,7 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-print_service() {
-    echo -e "${BLUE}[SERVICE]${NC} $1"
-}
-
-# Function to check if a port is in use
+# Function to check if a port is available
 check_port() {
     local port=$1
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null ; then
@@ -41,19 +44,19 @@ check_port() {
 # Function to wait for service to be ready
 wait_for_service() {
     local service_name=$1
-    local url=$2
+    local port=$2
     local max_attempts=30
     local attempt=1
     
-    print_status "Waiting for $service_name to be ready..."
+    print_status "Waiting for $service_name to be ready on port $port..."
     
     while [ $attempt -le $max_attempts ]; do
-        if curl -s "$url" > /dev/null 2>&1; then
-            print_status "$service_name is ready!"
+        if check_port $port; then
+            print_success "$service_name is ready!"
             return 0
         fi
         
-        echo -n "."
+        print_status "Attempt $attempt/$max_attempts - $service_name not ready yet..."
         sleep 2
         attempt=$((attempt + 1))
     done
@@ -62,127 +65,197 @@ wait_for_service() {
     return 1
 }
 
-# Start services with Docker Compose
-start_with_docker() {
-    print_status "Starting services with Docker Compose..."
+# Start Redis (if not running)
+start_redis() {
+    print_status "Starting Redis..."
     
-    cd "$(dirname "$0")/../docker"
+    if ! command -v redis-server &> /dev/null; then
+        print_warning "Redis not installed locally. Please install Redis or use Docker."
+        return
+    fi
     
-    # Start all services
-    docker-compose up -d
-    
-    # Wait for services to be ready
-    wait_for_service "PostgreSQL" "http://localhost:5432"
-    wait_for_service "Task Service" "http://localhost:8081/actuator/health"
-    wait_for_service "NLP Engine" "http://localhost:8082/health"
-    wait_for_service "Speech Service" "http://localhost:8083/health"
-    
-    print_status "All Docker services started successfully!"
+    if ! check_port 6379; then
+        redis-server --daemonize yes
+        print_success "Redis started"
+    else
+        print_status "Redis is already running"
+    fi
 }
 
-# Start services locally
-start_locally() {
-    print_status "Starting services locally..."
+# Start PostgreSQL (if not running)
+start_postgres() {
+    print_status "Starting PostgreSQL..."
     
-    cd "$(dirname "$0")/.."
+    if ! command -v pg_ctl &> /dev/null; then
+        print_warning "PostgreSQL not installed locally. Please install PostgreSQL or use Docker."
+        return
+    fi
     
-    # Start Task Service
-    print_service "Starting Task Service..."
+    if ! check_port 5432; then
+        # This is a simplified example - you might need to adjust based on your PostgreSQL installation
+        print_warning "Please start PostgreSQL manually or use Docker"
+    else
+        print_status "PostgreSQL is already running"
+    fi
+}
+
+# Start Task Service
+start_task_service() {
+    print_status "Starting Task Service..."
+    
+    if [ ! -f "task-service/target/task-service-1.0.0.jar" ]; then
+        print_error "Task Service JAR not found. Please run './scripts/build-all.sh' first."
+        exit 1
+    fi
+    
     cd task-service
-    if check_port 8081; then
-        print_warning "Port 8081 is already in use. Skipping Task Service."
-    else
-        mvn spring-boot:run -Dspring-boot.run.profiles=local &
-        TASK_PID=$!
-        echo $TASK_PID > ../.task-service.pid
-    fi
+    nohup java -jar target/task-service-1.0.0.jar > ../logs/task-service.log 2>&1 &
+    TASK_SERVICE_PID=$!
+    echo $TASK_SERVICE_PID > ../logs/task-service.pid
     cd ..
     
-    # Start NLP Engine
-    print_service "Starting NLP Engine..."
+    wait_for_service "Task Service" 8081
+}
+
+# Start NLP Engine
+start_nlp_engine() {
+    print_status "Starting NLP Engine..."
+    
+    if [ ! -d "nlp-engine/node_modules" ]; then
+        print_error "NLP Engine dependencies not installed. Please run './scripts/build-all.sh' first."
+        exit 1
+    fi
+    
     cd nlp-engine
-    if check_port 8082; then
-        print_warning "Port 8082 is already in use. Skipping NLP Engine."
-    else
-        npm start &
-        NLP_PID=$!
-        echo $NLP_PID > ../.nlp-engine.pid
-    fi
+    nohup npm start > ../logs/nlp-engine.log 2>&1 &
+    NLP_ENGINE_PID=$!
+    echo $NLP_ENGINE_PID > ../logs/nlp-engine.pid
     cd ..
     
-    # Start Speech Service
-    print_service "Starting Speech Service..."
+    wait_for_service "NLP Engine" 8082
+}
+
+# Start Speech Service
+start_speech_service() {
+    print_status "Starting Speech Service..."
+    
     cd speech-service
-    if check_port 8083; then
-        print_warning "Port 8083 is already in use. Skipping Speech Service."
-    else
-        source venv/bin/activate
-        python -m uvicorn main:app --host 0.0.0.0 --port 8083 &
-        SPEECH_PID=$!
-        echo $SPEECH_PID > ../.speech-service.pid
+    nohup python3 main.py > ../logs/speech-service.log 2>&1 &
+    SPEECH_SERVICE_PID=$!
+    echo $SPEECH_SERVICE_PID > ../logs/speech-service.pid
+    cd ..
+    
+    wait_for_service "Speech Service" 8083
+}
+
+# Start Gateway Service
+start_gateway_service() {
+    print_status "Starting Gateway Service..."
+    
+    if [ ! -f "gateway/target/gateway-1.0.0.jar" ]; then
+        print_error "Gateway Service JAR not found. Please run './scripts/build-all.sh' first."
+        exit 1
     fi
+    
+    cd gateway
+    nohup java -jar target/gateway-1.0.0.jar > ../logs/gateway.log 2>&1 &
+    GATEWAY_PID=$!
+    echo $GATEWAY_PID > ../logs/gateway.pid
     cd ..
     
-    # Start Desktop Application
-    print_service "Starting Desktop Application..."
-    cd jarvis-desktop
-    mvn javafx:run &
-    DESKTOP_PID=$!
-    echo $DESKTOP_PID > ../.desktop-app.pid
-    cd ..
-    
-    print_status "All local services started!"
-    print_status "PIDs saved in .*.pid files"
+    wait_for_service "Gateway Service" 8080
+}
+
+# Create logs directory
+create_logs_directory() {
+    if [ ! -d "logs" ]; then
+        mkdir -p logs
+        print_status "Created logs directory"
+    fi
 }
 
 # Stop all services
 stop_services() {
     print_status "Stopping all services..."
     
-    cd "$(dirname "$0")/.."
-    
-    # Stop local processes
-    for pid_file in .*.pid; do
-        if [ -f "$pid_file" ]; then
-            local pid=$(cat "$pid_file")
-            if ps -p $pid > /dev/null 2>&1; then
-                print_status "Stopping process $pid"
-                kill $pid
-            fi
-            rm "$pid_file"
+    # Stop Gateway
+    if [ -f "logs/gateway.pid" ]; then
+        GATEWAY_PID=$(cat logs/gateway.pid)
+        if kill -0 $GATEWAY_PID 2>/dev/null; then
+            kill $GATEWAY_PID
+            print_status "Stopped Gateway Service"
         fi
-    done
-    
-    # Stop Docker services
-    if command -v docker-compose &> /dev/null; then
-        cd docker
-        docker-compose down
-        cd ..
+        rm -f logs/gateway.pid
     fi
     
-    print_status "All services stopped!"
+    # Stop Speech Service
+    if [ -f "logs/speech-service.pid" ]; then
+        SPEECH_SERVICE_PID=$(cat logs/speech-service.pid)
+        if kill -0 $SPEECH_SERVICE_PID 2>/dev/null; then
+            kill $SPEECH_SERVICE_PID
+            print_status "Stopped Speech Service"
+        fi
+        rm -f logs/speech-service.pid
+    fi
+    
+    # Stop NLP Engine
+    if [ -f "logs/nlp-engine.pid" ]; then
+        NLP_ENGINE_PID=$(cat logs/nlp-engine.pid)
+        if kill -0 $NLP_ENGINE_PID 2>/dev/null; then
+            kill $NLP_ENGINE_PID
+            print_status "Stopped NLP Engine"
+        fi
+        rm -f logs/nlp-engine.pid
+    fi
+    
+    # Stop Task Service
+    if [ -f "logs/task-service.pid" ]; then
+        TASK_SERVICE_PID=$(cat logs/task-service.pid)
+        if kill -0 $TASK_SERVICE_PID 2>/dev/null; then
+            kill $TASK_SERVICE_PID
+            print_status "Stopped Task Service"
+        fi
+        rm -f logs/task-service.pid
+    fi
+    
+    print_success "All services stopped"
 }
 
 # Show service status
 show_status() {
     print_status "Service Status:"
-    
-    echo "Task Service (8081): $(check_port 8081 && echo "RUNNING" || echo "STOPPED")"
-    echo "NLP Engine (8082): $(check_port 8082 && echo "RUNNING" || echo "STOPPED")"
-    echo "Speech Service (8083): $(check_port 8083 && echo "RUNNING" || echo "STOPPED")"
-    echo "Grafana (3000): $(check_port 3000 && echo "RUNNING" || echo "STOPPED")"
+    echo "  Gateway Service: $(check_port 8080 && echo "RUNNING" || echo "STOPPED")"
+    echo "  Task Service: $(check_port 8081 && echo "RUNNING" || echo "STOPPED")"
+    echo "  NLP Engine: $(check_port 8082 && echo "RUNNING" || echo "STOPPED")"
+    echo "  Speech Service: $(check_port 8083 && echo "RUNNING" || echo "STOPPED")"
+    echo "  Redis: $(check_port 6379 && echo "RUNNING" || echo "STOPPED")"
+    echo "  PostgreSQL: $(check_port 5432 && echo "RUNNING" || echo "STOPPED")"
 }
 
 # Main function
 main() {
     case "${1:-start}" in
         "start")
-            if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; then
-                start_with_docker
-            else
-                print_warning "Docker not available, starting services locally"
-                start_locally
-            fi
+            print_status "Starting SmartJARVIS services..."
+            
+            # Create logs directory
+            create_logs_directory
+            
+            # Start infrastructure services
+            start_redis
+            start_postgres
+            
+            # Start application services
+            start_task_service
+            start_nlp_engine
+            start_speech_service
+            start_gateway_service
+            
+            print_success "🎉 All services started successfully!"
+            print_status "Gateway is available at: http://localhost:8080"
+            print_status "Task Service: http://localhost:8081"
+            print_status "NLP Engine: http://localhost:8082"
+            print_status "Speech Service: http://localhost:8083"
             ;;
         "stop")
             stop_services
@@ -205,6 +278,9 @@ main() {
             ;;
     esac
 }
+
+# Handle Ctrl+C
+trap 'print_status "Received interrupt signal. Stopping services..."; stop_services; exit 0' INT
 
 # Run main function
 main "$@"

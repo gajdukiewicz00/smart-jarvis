@@ -10,7 +10,7 @@ SmartJARVIS - это интеллектуальный десктопный ас�
 - **task-service** - Spring Boot REST API для управления задачами
 - **nlp-engine** - TypeScript/Node.js сервис для обработки естественного языка
 - **speech-service** - Python FastAPI сервис для распознавания и синтеза речи
-- **gateway** - API Gateway для маршрутизации запросов
+- **gateway** - Spring Cloud Gateway для маршрутизации запросов и API управления
 
 ## 🚀 Быстрый старт
 
@@ -20,6 +20,7 @@ SmartJARVIS - это интеллектуальный десктопный ас�
 - Maven 3.8+
 - Node.js 18+
 - Python 3.11+
+- Redis (для rate limiting)
 - Docker & Docker Compose (опционально)
 
 ### Установка и запуск
@@ -67,6 +68,13 @@ smart-jarvis/
 │   │   ├── infrastructure/  # JPA репозитории
 │   │   └── presentation/    # REST контроллеры
 │   └── pom.xml
+├── gateway/                 # Spring Cloud Gateway
+│   ├── src/main/java/
+│   │   ├── config/          # Gateway конфигурация
+│   │   ├── controller/      # Gateway контроллеры
+│   │   └── filter/          # Gateway фильтры
+│   ├── pom.xml
+│   └── README.md
 ├── nlp-engine/              # TypeScript NLP сервис
 │   ├── src/
 │   │   ├── services/        # NLP сервисы
@@ -80,6 +88,7 @@ smart-jarvis/
 ├── docker/                  # Docker конфигурация
 │   ├── docker-compose.yml
 │   ├── Dockerfile.task
+│   ├── Dockerfile.gateway
 │   └── Dockerfile.nlp
 ├── scripts/                 # Скрипты сборки и запуска
 │   ├── build-all.sh
@@ -93,10 +102,11 @@ smart-jarvis/
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
+| Gateway | 8080 | API Gateway (единая точка входа) |
 | Task Service | 8081 | REST API для задач |
 | NLP Engine | 8082 | NLP обработка |
 | Speech Service | 8083 | STT/TTS |
-| Gateway | 8080 | API Gateway |
+| Redis | 6379 | Rate limiting и кэширование |
 | Grafana | 3000 | Мониторинг |
 | PostgreSQL | 5432 | База данных |
 
@@ -111,9 +121,14 @@ POSTGRES_USER=jarvis_user
 POSTGRES_PASSWORD=jarvis_password
 
 # Services
+GATEWAY_PORT=8080
 TASK_SERVICE_PORT=8081
 NLP_ENGINE_PORT=8082
 SPEECH_SERVICE_PORT=8083
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
 
 # NLP Engine
 NODE_ENV=development
@@ -134,6 +149,10 @@ mvn test
 # Тестирование task-service
 cd task-service
 mvn test
+
+# Тестирование gateway
+cd gateway
+mvn test
 ```
 
 ### TypeScript модули
@@ -151,26 +170,56 @@ source venv/bin/activate
 pytest
 ```
 
+### Gateway API тестирование
+```bash
+# Запуск тестов Gateway
+cd gateway
+./test-gateway.sh
+```
+
 ## 📊 Мониторинг
+
+### Gateway Endpoints
+- **Gateway Info**: http://localhost:8080/api/v1/gateway/info
+- **Gateway Health**: http://localhost:8080/api/v1/gateway/health
+- **API Documentation**: http://localhost:8080/api/v1/gateway/docs
+
+### Actuator Endpoints
+- **Gateway Health**: http://localhost:8080/actuator/health
+- **Gateway Metrics**: http://localhost:8080/actuator/metrics
+- **Prometheus**: http://localhost:8080/actuator/prometheus
+
+### Service Health Checks
+- Task Service: http://localhost:8081/actuator/health
+- NLP Engine: http://localhost:8082/health
+- Speech Service: http://localhost:8083/health
 
 ### Grafana Dashboard
 - URL: http://localhost:3000
 - Логин: admin
 - Пароль: admin
 
-### Health Checks
-- Task Service: http://localhost:8081/actuator/health
-- NLP Engine: http://localhost:8082/health
-- Speech Service: http://localhost:8083/health
-
 ## 🔍 Логирование
 
 Логи сохраняются в директории `logs/`:
+- `gateway.log` - логи Gateway Service
 - `task-service.log` - логи Task Service
 - `nlp-engine.log` - логи NLP Engine
 - `speech-service.log` - логи Speech Service
 
 ## 🛠️ Разработка
+
+### Gateway Features
+
+Gateway предоставляет следующие возможности:
+
+- **Маршрутизация запросов** к микросервисам
+- **Rate Limiting** для защиты от перегрузки
+- **Circuit Breaker** для обработки отказов сервисов
+- **CORS** поддержка для веб-приложений
+- **Мониторинг и метрики** через Actuator
+- **Логирование** всех запросов и ответов
+- **Fallback** обработка при недоступности сервисов
 
 ### Добавление нового интента
 
@@ -187,11 +236,32 @@ pytest
 ### Добавление нового сервиса
 
 1. Создайте новый модуль
-2. Добавьте Dockerfile
-3. Обновите `docker-compose.yml`
-4. Добавьте в скрипты сборки и запуска
+2. Добавьте маршрут в Gateway `application.yml`
+3. Добавьте Dockerfile
+4. Обновите `docker-compose.yml`
+5. Добавьте в скрипты сборки и запуска
 
 ## 📝 API Документация
+
+### Gateway API
+
+Все запросы к сервисам проходят через Gateway на порту 8080:
+
+```bash
+# Task Service через Gateway
+GET /api/v1/tasks
+POST /api/v1/tasks
+PUT /api/v1/tasks/{id}
+DELETE /api/v1/tasks/{id}
+
+# NLP Engine через Gateway
+POST /api/v1/nlp/process
+GET /api/v1/nlp/intents
+
+# Speech Service через Gateway
+POST /api/v1/speech/recognize
+POST /api/v1/speech/synthesize
+```
 
 ### Task Service API
 
@@ -219,7 +289,7 @@ DELETE /api/v1/tasks/{id}
 
 ```bash
 # Обработать интент
-POST /api/process
+POST /api/v1/nlp/process
 {
   "text": "Создай задачу на завтра",
   "context": {}
@@ -230,11 +300,11 @@ POST /api/process
 
 ```bash
 # Преобразовать речь в текст
-POST /api/speech-to-text
+POST /api/v1/speech/recognize
 # (multipart/form-data с аудио файлом)
 
 # Преобразовать текст в речь
-POST /api/text-to-speech
+POST /api/v1/speech/synthesize
 {
   "text": "Привет, JARVIS!",
   "voice": "default",
@@ -266,4 +336,7 @@ POST /api/text-to-speech
 - [ ] Машинное обучение для улучшения NLP
 - [ ] Мобильное приложение
 - [ ] Интеграция с внешними API
-- [ ] Расширенная аналитика 
+- [ ] Расширенная аналитика
+- [ ] JWT аутентификация в Gateway
+- [ ] GraphQL поддержка
+- [ ] WebSocket поддержка для real-time обновлений 
