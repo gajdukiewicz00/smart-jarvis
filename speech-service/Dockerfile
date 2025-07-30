@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# Multi-stage build for speech-service
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -8,12 +9,6 @@ RUN apt-get update && apt-get install -y \
     g++ \
     portaudio19-dev \
     python3-dev \
-    ffmpeg \
-    espeak \
-    espeak-data \
-    pulseaudio \
-    pulseaudio-utils \
-    alsa-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -22,8 +17,30 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Production image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    espeak \
+    espeak-data \
+    pulseaudio \
+    pulseaudio-utils \
+    alsa-utils \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python dependencies from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
 # Copy application code
-COPY . .
+COPY src/ ./src/
+COPY main.py .
+COPY requirements.txt .
 
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser && \

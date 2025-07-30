@@ -23,7 +23,6 @@
     </properties>
 
     <modules>
-        <module>jarvis-desktop</module>
         <module>task-service</module>
     </modules>
 

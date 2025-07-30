@@ -1,7 +1,5 @@
-version: '3.8'
-
 services:
-  # Redis for Rate Limiting
+  # Redis for Rate Limiting and Caching
   redis:
     image: redis:7-alpine
     container_name: jarvis-redis
@@ -12,6 +10,11 @@ services:
     networks:
       - jarvis-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # PostgreSQL Database
   postgres:
@@ -21,6 +24,7 @@ services:
       POSTGRES_DB: jarvis_db
       POSTGRES_USER: jarvis_user
       POSTGRES_PASSWORD: jarvis_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5432:5432"
     volumes:
@@ -29,8 +33,13 @@ services:
     networks:
       - jarvis-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis_user -d jarvis_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Task Service (Spring Boot)
+  # Task Service (Spring Boot with Clean Architecture)
   task-service:
     build:
       context: ..
@@ -42,15 +51,25 @@ services:
       SPRING_DATASOURCE_USERNAME: jarvis_user
       SPRING_DATASOURCE_PASSWORD: jarvis_password
       TASK_SERVICE_PORT: 8081
+      SERVER_PORT: 8081
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW-DETAILS: always
     ports:
       - "8081:8081"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - jarvis-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # NLP Engine (Node.js/TypeScript)
+  # NLP Engine (Node.js/TypeScript with Clean Architecture)
   nlp-engine:
     build:
       context: ../nlp-engine
@@ -60,32 +79,50 @@ services:
       NODE_ENV: production
       NLP_ENGINE_PORT: 8082
       TASK_SERVICE_URL: http://task-service:8081/api/v1
+      LOG_LEVEL: info
     ports:
       - "8082:8082"
     depends_on:
-      - task-service
+      task-service:
+        condition: service_healthy
     networks:
       - jarvis-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8082/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Speech Service (Python/FastAPI)
+  # Speech Service (Python/FastAPI with Clean Architecture)
   speech-service:
-     build:
-       context: ../speech-service
-       dockerfile: Dockerfile
-     container_name: jarvis-speech-service
-     environment:
-       SPEECH_SERVICE_PORT: 8083
-       NLP_ENGINE_URL: http://nlp-engine:8082
-     ports:
-       - "8083:8083"
-     volumes:
-       - speech_audio:/app/audio
-     depends_on:
-       - nlp-engine
-     networks:
-       - jarvis-network
-     restart: unless-stopped
+    build:
+      context: ../speech-service
+      dockerfile: Dockerfile
+    container_name: jarvis-speech-service
+    environment:
+      SPEECH_SERVICE_PORT: 8083
+      NLP_ENGINE_URL: http://nlp-engine:8082
+      LOG_LEVEL: info
+      PYTHONPATH: /app
+    ports:
+      - "8083:8083"
+    volumes:
+      - speech_audio:/app/audio
+      - speech_logs:/app/logs
+    depends_on:
+      nlp-engine:
+        condition: service_healthy
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8083/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Gateway Service (Spring Cloud Gateway)
   gateway:
@@ -96,14 +133,48 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       GATEWAY_PORT: 8080
+      SERVER_PORT: 8080
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW-DETAILS: always
     ports:
       - "8080:8080"
     depends_on:
-      - redis
-      - task-service
-      - nlp-engine
+      redis:
+        condition: service_healthy
+      task-service:
+        condition: service_healthy
+      nlp-engine:
+        condition: service_healthy
+      speech-service:
+        condition: service_healthy
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Monitoring - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: jarvis-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
     networks:
       - jarvis-network
     restart: unless-stopped
@@ -114,20 +185,54 @@ services:
     container_name: jarvis-grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
     ports:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
     networks:
       - jarvis-network
     restart: unless-stopped
 
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: jarvis-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - gateway
+    networks:
+      - jarvis-network
+    restart: unless-stopped
+    profiles:
+      - production
+
 volumes:
   postgres_data:
+    driver: local
   speech_audio:
+    driver: local
+  speech_logs:
+    driver: local
   grafana_data:
+    driver: local
   redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
 
 networks:
   jarvis-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
