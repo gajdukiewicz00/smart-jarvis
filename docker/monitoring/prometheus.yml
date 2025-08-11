@@ -22,7 +22,7 @@ scrape_configs:
   # NLP Engine
   - job_name: 'nlp-engine'
     static_configs:
-      - targets: ['nlp-engine:8082']
+      - targets: ['nlp-engine:3001']
     metrics_path: '/api/metrics'
     scrape_interval: 10s
 

@@ -13,6 +13,8 @@ import org.springframework.web.cors.reactive.CorsWebFilter;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import org.springframework.web.reactive.config.CorsRegistry;
 import org.springframework.web.reactive.config.WebFluxConfigurer;
+import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
+import reactor.core.publisher.Mono;
 
 import java.util.Arrays;
 import java.util.List;
@@ -44,6 +46,21 @@ public class GatewayConfig implements WebFluxConfigurer {
 
     @Value("${gateway.security.enabled:false}")
     private boolean securityEnabled;
+
+    /**
+     * Key resolver for rate limiting
+     * Uses IP address as the key for rate limiting
+     */
+    @Bean
+    public KeyResolver userKeyResolver() {
+        return exchange -> {
+            String ip = "default";
+            if (exchange.getRequest().getRemoteAddress() != null) {
+                ip = exchange.getRequest().getRemoteAddress().getAddress().getHostAddress();
+            }
+            return Mono.just(ip);
+        };
+    }
 
     /**
      * CORS Configuration for WebFlux

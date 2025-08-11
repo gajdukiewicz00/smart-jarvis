@@ -6,18 +6,17 @@ WORKDIR /app
 # Install Maven
 RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
 
-# Copy pom.xml first for better caching
-COPY pom.xml .
-COPY task-service/pom.xml task-service/
+# Copy task-service pom.xml only
+COPY task-service/pom.xml .
 
 # Download dependencies
 RUN mvn dependency:go-offline -B
 
 # Copy source code
-COPY task-service/src task-service/src
+COPY task-service/src src
 
 # Build the application
-RUN mvn clean package -DskipTests -f task-service/pom.xml
+RUN mvn clean package -DskipTests
 
 # Production image
 FROM openjdk:21-slim
@@ -28,7 +27,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Copy the built jar
-COPY --from=builder /app/task-service/target/*.jar app.jar
+COPY --from=builder /app/target/*.jar app.jar
 
 # Create non-root user
 RUN addgroup --system javauser && adduser --system --ingroup javauser javauser
