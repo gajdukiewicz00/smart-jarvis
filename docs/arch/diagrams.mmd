@@ -1,0 +1,8 @@
+graph LR
+  A[Browser WS] -->|PCM 16k| VG[voice-gateway]
+  VG -->|sj.audio.raw.v1| STT
+  STT -->|sj.stt.final.v1| NLU
+  NLU -->|sj.nlu.intent.v1| DM
+  DM -->|sj.nlg.reply.v1| NLG
+  NLG -->|sj.tts.request.v1| TTS
+  TTS -->|sj.tts.audio.v1| VG

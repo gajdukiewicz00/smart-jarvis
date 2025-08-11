@@ -1,0 +1,211 @@
+name: smart-jarvis-platform
+
+services:
+  # ================= CORE STACK =================
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: sj-kafka
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    ports: []
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - sj-net
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    container_name: sj-schema-registry
+    environment:
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka:9092
+      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+      - SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081
+    ports: []
+    depends_on:
+      - kafka
+    networks:
+      - sj-net
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  redis:
+    image: redis:7-alpine
+    container_name: sj-redis
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: sj-postgres
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=jarvis
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.1
+    container_name: sj-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../ops/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sj-prometheus
+    volumes:
+      - ../ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sj-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ../ops/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: sj-loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ../ops/loki/config.yml:/etc/loki/config.yml:ro
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [core, voice, full]
+
+  # ================= VOICE STACK =================
+  voice-gateway:
+    build:
+      context: ../../services/voice-gateway
+      dockerfile: Dockerfile
+    container_name: sj-voice-gateway
+    environment:
+      - KAFKA_BROKERS=${KAFKA_BROKERS}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - AUDIO_SAMPLE_RATE=${AUDIO_SAMPLE_RATE:-16000}
+      - AUDIO_FRAME_MS=${AUDIO_FRAME_MS:-20}
+      - JARVIS_ENV=${JARVIS_ENV:-dev}
+    ports:
+      - "${VOICE_GATEWAY_PORT:-7090}:7090"
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [voice, full]
+
+  stt-service:
+    build:
+      context: ../../services/stt-service
+      dockerfile: Dockerfile
+    container_name: sj-stt
+    environment:
+      - KAFKA_BROKERS=${KAFKA_BROKERS}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - STT_ENGINE=${STT_ENGINE:-vosk}
+      - STT_MODEL=${STT_MODEL:-vosk-model-small-en-us-0.15}
+      - AUDIO_SAMPLE_RATE=${AUDIO_SAMPLE_RATE:-16000}
+      - JARVIS_ENV=${JARVIS_ENV:-dev}
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [voice, full]
+
+  nlu-service:
+    build:
+      context: ../../services/nlu-service
+      dockerfile: Dockerfile
+    container_name: sj-nlu
+    environment:
+      - KAFKA_BROKERS=${KAFKA_BROKERS}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - JARVIS_ENV=${JARVIS_ENV:-dev}
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [voice, full]
+
+  nlg-service:
+    build:
+      context: ../../services/nlg-service
+      dockerfile: Dockerfile
+    container_name: sj-nlg
+    environment:
+      - KAFKA_BROKERS=${KAFKA_BROKERS}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - JARVIS_ENV=${JARVIS_ENV:-dev}
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [voice, full]
+
+  tts-service:
+    build:
+      context: ../../services/tts-service
+      dockerfile: Dockerfile
+    container_name: sj-tts
+    environment:
+      - KAFKA_BROKERS=${KAFKA_BROKERS}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - TTS_BACKEND=${TTS_BACKEND:-piper}
+      - TTS_VOICE=${TTS_VOICE:-en_US-amy-medium}
+      - AUDIO_SAMPLE_RATE=${AUDIO_SAMPLE_RATE:-16000}
+      - JARVIS_ENV=${JARVIS_ENV:-dev}
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [voice, full]
+
+  dm-service:
+    build:
+      context: ../../services/dm-service
+      dockerfile: Dockerfile
+    container_name: sj-dm
+    environment:
+      - KAFKA_BROKERS=${KAFKA_BROKERS}
+      - SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - JARVIS_ENV=${JARVIS_ENV:-dev}
+    networks: [sj-net]
+    restart: unless-stopped
+    profiles: [voice, full]
+
+volumes:
+  kafka_data:
+  pg_data:
+  prom_data:
+
+networks:
+  sj-net:
+    driver: bridge
+

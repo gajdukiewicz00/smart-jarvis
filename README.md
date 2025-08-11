@@ -117,6 +117,27 @@ curl http://localhost:8083/health           # Speech Service
 curl http://localhost:8080/actuator/health  # Gateway
 ```
 
+## 🎙️ Event Bus demo (INCREMENT A)
+
+Минимальный голосовой цикл на Kafka + Avro + Schema Registry.
+
+```bash
+# 1) Подготовка окружения
+cd platform/docker && cp env.sample .env
+
+# 2) Запуск профиля voice (включает core)
+make -C ../.. up-voice
+
+# 3) Проверка
+curl -f http://localhost:7090/healthz
+```
+
+- Веб-сокет: `ws://localhost:7090/ws/audio` — первый бинарный кадр JSON header `{sessionId, correlationId, sampleRate}`, далее PCM16 16kHz 20–40ms
+- Ответ — PCM/WAV по тому же `sessionId`
+- Дашборды: Grafana `http://localhost:3000`
+
+Legacy Docker Compose сохранён в `_archive/docker-compose.legacy.yml` и продолжает работать (порты 8080–8083 неизменны).
+
 ### Создание задачи
 
 ```bash
