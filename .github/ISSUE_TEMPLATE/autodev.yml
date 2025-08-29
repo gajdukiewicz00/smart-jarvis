@@ -1,0 +1,13 @@
+name: AutoDev Task
+description: Issue for AutoDev to implement
+labels: [auto-dev]
+title: "[AutoDev] <short title>"
+body:
+  - type: textarea
+    id: spec
+    attributes:
+      label: Specification / Acceptance Criteria
+      description: Describe exact acceptance criteria to implement
+      placeholder: Acceptance Criteria...
+    validations:
+      required: true
