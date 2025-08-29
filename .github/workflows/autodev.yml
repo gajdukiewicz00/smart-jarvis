@@ -25,6 +25,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          
       - name: Install aider
         run: |
           python -m pip install -U aider-install
