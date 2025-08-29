@@ -1,0 +1,13 @@
+[pr_reviewer]
+enable_review = true
+require_tests = true
+require_docs = true
+maximal_review_effort = 2
+suggest_code_changes = true
+auto_review_on_open = true
+fail_on_blocking_issues = false
+
+[pr_description]
+auto_generate = true
+include_summary = true
+include_breaking_changes = true
