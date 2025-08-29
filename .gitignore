@@ -91,3 +91,4 @@ tmp/
 # Monitoring
 grafana-data/
 prometheus-data/
+.aider*
