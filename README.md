@@ -151,6 +151,50 @@ source venv/bin/activate
 pytest
 ```
 
+## 🚪 Gateway & Health
+
+### API Gateway
+SmartJARVIS использует Spring Cloud Gateway для маршрутизации запросов и обеспечения единой точки входа.
+
+**Основные функции:**
+- **Маршрутизация**: Автоматическая маршрутизация к микросервисам
+- **Rate Limiting**: Ограничение частоты запросов через Redis
+- **Circuit Breaker**: Защита от каскадных сбоев
+- **Security**: Базовая аутентификация и авторизация
+- **Monitoring**: Интеграция с Prometheus и Grafana
+
+### Health Checks
+Все сервисы поддерживают health checks для мониторинга состояния:
+
+| Сервис | Health Endpoint | Ready Endpoint |
+|--------|----------------|----------------|
+| **Gateway** | `http://localhost:8080/actuator/health` | `http://localhost:8080/actuator/health/readiness` |
+| **Task Service** | `http://localhost:8081/actuator/health` | `http://localhost:8081/actuator/health/readiness` |
+| **NLP Engine** | `http://localhost:3001/api/health` | `http://localhost:3001/api/ready` |
+| **Speech Service** | `http://localhost:8083/health` | `http://localhost:8083/ready` |
+
+### Gateway Routes
+```yaml
+# Основные маршруты
+/api/tasks/*     -> Task Service (8081)
+/api/nlp/*       -> NLP Engine (3001)
+/api/speech/*    -> Speech Service (8083)
+/actuator/*      -> Gateway Management
+```
+
+### Тестирование Gateway
+```bash
+# Быстрый тест здоровья
+./scripts/test-gateway.sh
+
+# Тест стабильности
+./scripts/stability-test.sh
+
+# Ручная проверка
+curl http://localhost:8080/actuator/health
+curl http://localhost:8080/api/tasks/
+```
+
 ## 📊 Мониторинг
 
 ### Grafana Dashboard
@@ -158,10 +202,11 @@ pytest
 - Логин: admin
 - Пароль: admin
 
-### Health Checks
-- Task Service: http://localhost:8081/actuator/health
-- NLP Engine: http://localhost:8082/health
-- Speech Service: http://localhost:8083/health
+### Prometheus Metrics
+- Gateway: http://localhost:8080/actuator/prometheus
+- Task Service: http://localhost:8081/actuator/prometheus
+- NLP Engine: http://localhost:3001/metrics
+- Speech Service: http://localhost:8083/metrics
 
 ## 🔍 Логирование
 
