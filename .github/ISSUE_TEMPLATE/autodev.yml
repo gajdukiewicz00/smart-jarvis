@@ -1,0 +1,52 @@
+name: AutoDev Task
+description: Issue for AutoDev to implement
+labels: [autodev:run]
+title: "[AutoDev] <short title>"
+body:
+  - type: textarea
+    id: spec
+    attributes:
+      label: Specification / Acceptance Criteria
+      description: Describe exact acceptance criteria to implement
+      placeholder: |
+        ## Task Description
+        Brief description of what needs to be implemented
+        
+        ## Acceptance Criteria
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+        
+        ## Scope
+        - [ ] Documentation only
+        - [ ] Scripts/config only  
+        - [ ] Source code changes
+        - [ ] All of the above
+        
+        ## Notes
+        Any additional context or constraints
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Allowed Scope
+      description: What can AutoDev modify?
+      options:
+        - docs
+        - scripts
+        - config
+        - all
+      default: docs
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints / Restrictions
+      description: Any specific limitations or requirements
+      placeholder: |
+        - Do NOT modify source code files
+        - Only update documentation
+        - Follow conventional commits
+        - Ensure tests pass

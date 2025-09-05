@@ -1,0 +1,54 @@
+[pr_reviewer]
+enable_review = true
+require_tests = true
+require_docs = true
+maximal_review_effort = 2
+suggest_code_changes = true
+auto_review_on_open = true
+fail_on_blocking_issues = false
+
+# AutoDev PR restrictions
+skip_autodev_prs = true
+autodev_pr_prefix = "autodev/"
+
+[pr_description]
+auto_generate = true
+include_summary = true
+include_breaking_changes = true
+
+[pr_questions]
+enabled = true
+max_questions = 3
+
+[pr_code_suggestions]
+enabled = true
+max_suggestions = 5
+
+[pr_security]
+enabled = true
+check_secrets = true
+check_dependencies = true
+
+[pr_merge]
+enabled = false
+auto_merge = false
+require_approval = true
+require_ci_pass = true
+
+# Path filters for safety
+[pr_reviewer.path_filters]
+allowed_paths = [
+    "docs/",
+    "scripts/",
+    "ci/",
+    ".github/",
+    "README.md",
+    "CONTRIBUTING.md",
+    "*.md"
+]
+blocked_paths = [
+    "jarvis-desktop/src/",
+    "task-service/src/",
+    "nlp-engine/src/",
+    "speech-service/"
+]

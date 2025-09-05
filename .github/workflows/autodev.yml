@@ -1,0 +1,207 @@
+name: AutoDev
+
+on:
+  # Manual dispatch only - no automatic triggers
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to implement (optional)'
+        required: false
+        type: string
+      target_branch:
+        description: 'Target branch (default: main)'
+        required: false
+        default: 'main'
+        type: string
+      scope:
+        description: 'Allowed scope (docs, scripts, config, all)'
+        required: false
+        default: 'docs'
+        type: choice
+        options:
+          - docs
+          - scripts
+          - config
+          - all
+  # Label-based trigger with strict filtering
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Security check - validate trigger and scope
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+      scope: ${{ steps.check.outputs.scope }}
+      issue-number: ${{ steps.check.outputs.issue-number }}
+      target-branch: ${{ steps.check.outputs.target-branch }}
+    steps:
+      - name: Validate trigger and scope
+        id: check
+        run: |
+          # Manual dispatch - always allowed
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+            echo "scope=${{ github.event.inputs.scope || 'docs' }}" >> $GITHUB_OUTPUT
+            echo "issue-number=${{ github.event.inputs.issue_number || '' }}" >> $GITHUB_OUTPUT
+            echo "target-branch=${{ github.event.inputs.target_branch || 'main' }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Label-based trigger - strict validation
+          if [ "${{ github.event_name }}" = "issues" ] && [ "${{ github.event.label.name }}" = "autodev:run" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+            echo "scope=docs" >> $GITHUB_OUTPUT
+            echo "issue-number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "target-branch=main" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Reject all other triggers
+          echo "should-run=false" >> $GITHUB_OUTPUT
+          echo "❌ Invalid trigger: ${{ github.event_name }}"
+          echo "✅ Allowed triggers: workflow_dispatch, issues with label 'autodev:run'"
+
+  # Implementation job - only runs if security check passes
+  implement:
+    name: AutoDev Implementation
+    runs-on: ubuntu-latest
+    needs: security-check
+    if: needs.security-check.outputs.should-run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install aider
+        run: |
+          python -m pip install -U aider-install
+          aider-install
+
+      - name: Create implementation prompt
+        run: |
+          SCOPE="${{ needs.security-check.outputs.scope }}"
+          ISSUE_NUM="${{ needs.security-check.outputs.issue-number }}"
+          
+          # Create scope-specific prompt
+          case "$SCOPE" in
+            "docs")
+              PROMPT="Update documentation only. Focus on README, CONTRIBUTING, API docs, and code comments. Do NOT modify any source code files."
+              ;;
+            "scripts")
+              PROMPT="Update build scripts, CI configurations, and automation tools only. Do NOT modify application source code."
+              ;;
+            "config")
+              PROMPT="Update configuration files, environment files, and deployment configs only. Do NOT modify application source code."
+              ;;
+            "all")
+              PROMPT="Implement the requested changes. Follow conventional commits and ensure all tests pass."
+              ;;
+            *)
+              PROMPT="Update documentation only. Do NOT modify any source code files."
+              ;;
+          esac
+          
+          # Add issue context if available
+          if [ -n "$ISSUE_NUM" ]; then
+            echo "Issue #$ISSUE_NUM context: $PROMPT" > prompt.txt
+          else
+            echo "$PROMPT" > prompt.txt
+          fi
+
+      - name: Run aider with scope restrictions
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          SCOPE="${{ needs.security-check.outputs.scope }}"
+          
+          # Set path filters based on scope
+          case "$SCOPE" in
+            "docs")
+              PATHS="docs/ README.md CONTRIBUTING.md *.md"
+              ;;
+            "scripts")
+              PATHS="scripts/ ci/ .github/ Makefile *.sh"
+              ;;
+            "config")
+              PATHS="docker/ .env* *.yml *.yaml *.toml *.json"
+              ;;
+            "all")
+              PATHS=""
+              ;;
+            *)
+              PATHS="docs/ README.md CONTRIBUTING.md *.md"
+              ;;
+          esac
+          
+          # Run aider with scope restrictions
+          if [ -n "$PATHS" ]; then
+            aider --model gpt-4o --yes --message "$(cat prompt.txt)" --auto-commit --include "$PATHS"
+          else
+            aider --model gpt-4o --yes --message "$(cat prompt.txt)" --auto-commit
+          fi
+
+      - name: Run repository tests
+        run: |
+          # Only run tests if source code was modified
+          if git diff --name-only HEAD~1 | grep -E '\.(java|ts|js|py)$'; then
+            echo "Source code modified - running tests"
+            bash ./ci/run_all_tests.sh | tee tests.out
+          else
+            echo "No source code modified - skipping tests"
+            echo "Tests skipped" > tests.out
+          fi
+
+      - name: Create AutoDev PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+          branch: "autodev/${{ github.run_id }}"
+          base: ${{ needs.security-check.outputs.target-branch }}
+          title: "AutoDev: ${{ needs.security-check.outputs.scope }} changes"
+          body: |
+            ## AutoDev Implementation
+            
+            **Scope**: ${{ needs.security-check.outputs.scope }}
+            **Trigger**: ${{ github.event_name }}
+            **Issue**: ${{ needs.security-check.outputs.issue-number || 'Manual dispatch' }}
+            
+            ### Changes Made
+            - [ ] Documentation updates
+            - [ ] Script improvements  
+            - [ ] Configuration changes
+            - [ ] Source code changes (if scope=all)
+            
+            ### Testing
+            - [ ] Tests pass (if source code modified)
+            - [ ] Documentation updated
+            - [ ] No breaking changes
+            
+            ### AutoDev Notes
+            This PR was automatically generated by AutoDev workflow.
+            Please review carefully before merging.
+            
+            **⚠️ Important**: AutoDev is restricted to safe scopes by default.
+            For source code changes, use scope=all explicitly.
+          delete-branch: true
+          commit-message: "autodev(${{ needs.security-check.outputs.scope }}): automated implementation"
+
+      - name: Close AutoDev PR after merge
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+        run: |
+          echo "AutoDev PR merged successfully"
+          # AutoDev PRs are automatically deleted after merge
