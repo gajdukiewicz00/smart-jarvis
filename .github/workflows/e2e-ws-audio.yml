@@ -1,0 +1,280 @@
+name: E2E WebSocket Audio Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: 'Run E2E WebSocket Audio Tests'
+        required: false
+        default: true
+        type: boolean
+  pull_request:
+    types: [labeled]
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Check if E2E tests should run
+  check-trigger:
+    name: Check E2E Trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+    steps:
+      - name: Check trigger conditions
+        id: check
+        run: |
+          # Manual dispatch
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Label-based trigger
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.label.name }}" = "run-e2e" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          if [ "${{ github.event_name }}" = "issues" ] && [ "${{ github.event.label.name }}" = "run-e2e" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Default: don't run
+          echo "should-run=false" >> $GITHUB_OUTPUT
+
+  # Setup test environment
+  setup-environment:
+    name: Setup Test Environment
+    runs-on: ubuntu-latest
+    needs: check-trigger
+    if: needs.check-trigger.outputs.should-run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Node.js dependencies
+        run: |
+          npm install ws
+          npm install --save-dev jest
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install websockets numpy asyncio
+
+      - name: Start services with Docker Compose
+        run: |
+          cd docker
+          docker-compose up -d
+          sleep 30  # Wait for services to start
+
+      - name: Check service health
+        run: |
+          echo "🏥 Checking service health..."
+          curl -f http://localhost:8080/actuator/health || echo "❌ Gateway not ready"
+          curl -f http://localhost:8081/actuator/health || echo "❌ Task Service not ready"
+          curl -f http://localhost:3001/api/health || echo "❌ NLP Engine not ready"
+          curl -f http://localhost:8083/health || echo "❌ Speech Service not ready"
+
+  # Run Node.js E2E tests
+  e2e-node-tests:
+    name: E2E Tests (Node.js)
+    runs-on: ubuntu-latest
+    needs: [check-trigger, setup-environment]
+    if: needs.check-trigger.outputs.should-run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm install ws
+
+      - name: Run E2E WebSocket Audio Tests
+        run: |
+          echo "🧪 Running Node.js E2E tests..."
+          node tests/e2e/ws-audio-tester.test.js
+        env:
+          WS_HOST: localhost
+          WS_PORT: 7090
+          WS_PROTOCOL: ws
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-node-results
+          path: tests/e2e/e2e-test-report.json
+
+  # Run Python E2E tests
+  e2e-python-tests:
+    name: E2E Tests (Python)
+    runs-on: ubuntu-latest
+    needs: [check-trigger, setup-environment]
+    if: needs.check-trigger.outputs.should-run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install websockets numpy
+
+      - name: Run E2E Audio Analyzer
+        run: |
+          echo "🧪 Running Python E2E tests..."
+          python tests/e2e/ws_audio_analyzer.py localhost 7090
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-python-results
+          path: tests/e2e/e2e-audio-report.json
+
+  # Performance benchmarks
+  e2e-performance:
+    name: E2E Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: [check-trigger, setup-environment]
+    if: needs.check-trigger.outputs.should-run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install websockets numpy matplotlib
+
+      - name: Run Performance Benchmarks
+        run: |
+          echo "📊 Running performance benchmarks..."
+          python -c "
+          import asyncio
+          import websockets
+          import time
+          import json
+          import numpy as np
+          
+          async def benchmark():
+              uri = 'ws://localhost:7090/ws'
+              results = []
+              
+              for i in range(10):
+                  start = time.time()
+                  async with websockets.connect(uri) as ws:
+                      await ws.send(json.dumps({'type': 'ping', 'id': i}))
+                      await ws.recv()
+                      end = time.time()
+                      results.append((end - start) * 1000)
+              
+              avg_latency = np.mean(results)
+              max_latency = np.max(results)
+              min_latency = np.min(results)
+              
+              print(f'Average latency: {avg_latency:.2f}ms')
+              print(f'Max latency: {max_latency:.2f}ms')
+              print(f'Min latency: {min_latency:.2f}ms')
+              
+              if avg_latency < 100:
+                  print('✅ Performance test passed')
+              else:
+                  print('❌ Performance test failed')
+                  exit(1)
+          
+          asyncio.run(benchmark())
+          "
+
+  # Cleanup
+  cleanup:
+    name: Cleanup Environment
+    runs-on: ubuntu-latest
+    needs: [check-trigger, setup-environment, e2e-node-tests, e2e-python-tests, e2e-performance]
+    if: always() && needs.check-trigger.outputs.should-run == 'true'
+    steps:
+      - name: Stop Docker services
+        run: |
+          cd docker
+          docker-compose down -v
+
+      - name: Clean up Docker resources
+        run: |
+          docker system prune -f
+
+  # Generate E2E report
+  e2e-report:
+    name: Generate E2E Report
+    runs-on: ubuntu-latest
+    needs: [check-trigger, e2e-node-tests, e2e-python-tests, e2e-performance]
+    if: always() && needs.check-trigger.outputs.should-run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-node-results
+          path: node-results/
+
+      - name: Download Python results
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-python-results
+          path: python-results/
+
+      - name: Generate E2E Summary
+        run: |
+          echo "📋 E2E WebSocket Audio Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "=================================" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "node-results/e2e-test-report.json" ]; then
+            echo "### Node.js Test Results" >> $GITHUB_STEP_SUMMARY
+            cat node-results/e2e-test-report.json | jq -r '.summary | "Success Rate: \(.successRate)%"' >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -f "python-results/e2e-audio-report.json" ]; then
+            echo "### Python Test Results" >> $GITHUB_STEP_SUMMARY
+            cat python-results/e2e-audio-report.json | jq -r '.summary | "Success Rate: \(.success_rate)%"' >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Node.js Tests: ${{ needs.e2e-node-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Python Tests: ${{ needs.e2e-python-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Performance Tests: ${{ needs.e2e-performance.result }}" >> $GITHUB_STEP_SUMMARY
