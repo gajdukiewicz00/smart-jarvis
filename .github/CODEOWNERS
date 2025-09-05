@@ -1,0 +1,28 @@
+# Global owners
+* @gajdukiewicz00
+
+# Platform/Infrastructure
+/.github/ @gajdukiewicz00
+/ci/ @gajdukiewicz00
+/docker/ @gajdukiewicz00
+/Makefile @gajdukiewicz00
+/.editorconfig @gajdukiewicz00
+/ruff.toml @gajdukiewicz00
+/.flake8 @gajdukiewicz00
+/eslint.config.js @gajdukiewicz00
+
+# Java modules
+/jarvis-desktop/ @gajdukiewicz00
+/task-service/ @gajdukiewicz00
+/pom.xml @gajdukiewicz00
+
+# Node.js services
+/nlp-engine/ @gajdukiewicz00
+
+# Python services
+/speech-service/ @gajdukiewicz00
+
+# Documentation
+/README.md @gajdukiewicz00
+/CONTRIBUTING.md @gajdukiewicz00
+/docs/ @gajdukiewicz00

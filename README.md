@@ -1,5 +1,10 @@
 # SmartJARVIS - Intelligent Desktop Assistant
 
+[![CI](https://github.com/gajdukiewicz00/smart-jarvis/workflows/CI/badge.svg)](https://github.com/gajdukiewicz00/smart-jarvis/actions)
+[![CodeQL](https://github.com/gajdukiewicz00/smart-jarvis/workflows/CodeQL%20Analysis/badge.svg)](https://github.com/gajdukiewicz00/smart-jarvis/actions)
+[![Security Scan](https://github.com/gajdukiewicz00/smart-jarvis/workflows/Security%20Scan/badge.svg)](https://github.com/gajdukiewicz00/smart-jarvis/actions)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 SmartJARVIS - это интеллектуальный десктопный ассистент, построенный на микросервисной архитектуре с использованием Clean Architecture принципов.
 
 ## 🏗️ Архитектура
@@ -16,11 +21,52 @@ SmartJARVIS - это интеллектуальный десктопный ас�
 
 ### Предварительные требования
 
-- Java 21+
-- Maven 3.8+
-- Node.js 18+
-- Python 3.11+
-- Docker & Docker Compose (опционально)
+- **Java**: JDK 17+ (Temurin recommended)
+- **Node.js**: 18+ (LTS recommended)  
+- **Python**: 3.10+ (3.11 recommended)
+- **Maven**: 3.8+
+- **Docker**: Latest stable (опционально)
+
+### Локальный запуск
+
+#### 1. Клонирование и установка зависимостей
+```bash
+git clone https://github.com/gajdukiewicz00/smart-jarvis.git
+cd smart-jarvis
+
+# Java модули
+mvn clean install -DskipTests
+
+# Node.js сервисы  
+cd nlp-engine && npm ci && cd ..
+
+# Python сервисы
+cd speech-service && pip install -r requirements.txt && cd ..
+```
+
+#### 2. Запуск тестов
+```bash
+# Все тесты
+bash ./ci/run_all_tests.sh
+
+# Индивидуальные сервисы
+mvn test                    # Java
+npm test                    # Node.js  
+pytest                      # Python
+```
+
+#### 3. Сборка и запуск сервисов
+```bash
+# Java сервисы
+mvn spring-boot:run -pl task-service
+mvn javafx:run -pl jarvis-desktop
+
+# Node.js сервисы
+cd nlp-engine && npm start
+
+# Python сервисы  
+cd speech-service && python main.py
+```
 
 ### Установка и запуск
 
