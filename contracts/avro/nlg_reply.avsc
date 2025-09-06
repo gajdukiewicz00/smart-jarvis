@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "NlgReply",
+  "namespace": "ai.smartjarvis.v1",
+  "doc": "NLG output containing text and optional SSML for TTS",
+  "fields": [
+    { "name": "messageVersion", "type": "int", "default": 1 },
+    { "name": "timestamp", "type": "long", "doc": "event time epoch millis" },
+    { "name": "errors", "type": {"type": "array", "items": "string"}, "default": [] },
+
+    { "name": "correlationId", "type": "string" },
+    { "name": "sessionId", "type": "string" },
+
+    { "name": "text", "type": "string" },
+    { "name": "ssml", "type": ["null", "string"], "default": null }
+  ]
+}
+

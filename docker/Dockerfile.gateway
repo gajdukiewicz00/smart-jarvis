@@ -1,4 +1,4 @@
-# Multi-stage build for task-service
+# Multi-stage build for gateway
 FROM openjdk:21-jdk-slim AS builder
 
 WORKDIR /app
@@ -6,14 +6,17 @@ WORKDIR /app
 # Install Maven
 RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
 
-# Copy task-service pom.xml only
-COPY task-service/pom.xml .
+# Copy gateway pom.xml only
+COPY gateway/pom.xml .
+
+# Copy checkstyle configuration
+COPY gateway/checkstyle.xml .
 
 # Download dependencies
 RUN mvn dependency:go-offline -B
 
 # Copy source code
-COPY task-service/src src
+COPY gateway/src src
 
 # Build the application
 RUN mvn clean package -DskipTests
@@ -34,11 +37,11 @@ RUN addgroup --system javauser && adduser --system --ingroup javauser javauser
 USER javauser
 
 # Expose port
-EXPOSE 8081
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8081/actuator/health || exit 1
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 # Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]

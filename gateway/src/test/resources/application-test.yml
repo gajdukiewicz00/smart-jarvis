@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: gateway-service-test
+  
+  cloud:
+    gateway:
+      routes:
+        # Test routes for Task Service
+        - id: test-task-service-routes
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v1/tasks/**
+          filters:
+            - StripPrefix=0
+        
+        # Test routes for NLP Engine
+        - id: test-nlp-engine-routes
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/v1/nlp/**
+          filters:
+            - StripPrefix=1
+
+  # Test Redis Configuration
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 1000ms
+
+# Test Server Configuration
+server:
+  port: 0  # Use random port for tests
+
+# Test Management Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# Test Logging Configuration
+logging:
+  level:
+    com.smartjarvis.gateway: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    reactor.netty: WARN
+    io.netty: WARN
+
+# Test Gateway Configuration
+gateway:
+  cors:
+    allowed-origins: "*"
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
+  security:
+    enabled: false
+  rate-limiting:
+    enabled: false
+  monitoring:
+    enabled: true
+    metrics:
+      enabled: true
+      prometheus:
+        enabled: true
