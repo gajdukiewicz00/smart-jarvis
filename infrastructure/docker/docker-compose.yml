@@ -228,6 +228,57 @@ services:
     networks:
       - smartjarvis-network
 
+  # DM Service
+  dm-service:
+    build:
+      context: ../../services/dm-service
+      dockerfile: Dockerfile
+    hostname: dm-service
+    container_name: smartjarvis-dm-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # TTS Service
+  tts-service:
+    build:
+      context: ../../services/tts-service
+      dockerfile: Dockerfile
+    hostname: tts-service
+    container_name: smartjarvis-tts-service
+    ports:
+      - "8085:8085"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
   # Voice Gateway Service
   voice-gateway:
     build:
