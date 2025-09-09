@@ -1,0 +1,106 @@
+spring:
+  application:
+    name: nlu-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  # Kafka configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    schema-registry:
+      url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    consumer:
+      group-id: nlu-service
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        specific.avro.reader: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        acks: all
+        retries: 3
+        enable.idempotence: true
+
+# Server configuration
+server:
+  port: ${SERVER_PORT:8083}
+  servlet:
+    context-path: /
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      service: nlu-service
+      version: 1.0.0-SNAPSHOT
+
+# Logging configuration
+logging:
+  level:
+    com.smartjarvis: ${LOG_LEVEL:INFO}
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId}] %logger{36} - %msg%n"
+
+# Custom NLU configuration
+smartjarvis:
+  nlu:
+    confidence-threshold: 0.5
+    max-entities: 10
+    supported-languages:
+      - ru
+      - en
+    intents:
+      enabled:
+        - greeting
+        - help
+        - todo_create
+        - todo_list
+        - home_control
+        - time_query
+        - weather_query
+        - stop
+
+---
+# Docker profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  kafka:
+    bootstrap-servers: kafka:29092
+    schema-registry:
+      url: http://schema-registry:8081
+
+---
+# Test profile  
+spring:
+  config:
+    activate:
+      on-profile: test
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+
+logging:
+  level:
+    com.smartjarvis: DEBUG

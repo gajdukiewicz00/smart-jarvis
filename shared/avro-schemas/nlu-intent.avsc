@@ -1,0 +1,46 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record", 
+  "name": "NLUIntentEvent",
+  "doc": "Event when intent is extracted from text",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Unique session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "intent",
+      "type": "string",
+      "doc": "Recognized intent name"
+    },
+    {
+      "name": "confidence",
+      "type": "float",
+      "doc": "Intent recognition confidence (0.0 to 1.0)"
+    },
+    {
+      "name": "entities",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "Extracted entities as key-value pairs"
+    },
+    {
+      "name": "originalText",
+      "type": "string",
+      "doc": "Original transcribed text"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Unix timestamp in milliseconds"
+    }
+  ]
+}

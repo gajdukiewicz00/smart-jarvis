@@ -1,0 +1,53 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "DMDecisionEvent", 
+  "doc": "Event when dialog manager makes a decision",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Unique session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "doc": "Action to be performed"
+    },
+    {
+      "name": "targetService",
+      "type": "string",
+      "doc": "Target service to handle the action"
+    },
+    {
+      "name": "responseText",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Text response to be spoken"
+    },
+    {
+      "name": "parameters",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "Action parameters"
+    },
+    {
+      "name": "requiresConfirmation",
+      "type": "boolean",
+      "default": false,
+      "doc": "Whether action requires user confirmation"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Unix timestamp in milliseconds"
+    }
+  ]
+}
