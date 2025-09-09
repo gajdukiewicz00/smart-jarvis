@@ -1,175 +1,102 @@
-# SmartJARVIS Development Makefile
-.PHONY: help setup lint test build docker-build docker-up docker-down clean gateway-test e2e-smoke
+# SmartJARVIS - Makefile
+# Управление микросервисами
 
-# Default target
-help:
-	@echo "SmartJARVIS Development Commands"
-	@echo "================================"
+.PHONY: help up down status logs build test clean grafana prometheus jaeger
+
+help: ## Показать справку
+	@echo "SmartJARVIS - Команды управления"
 	@echo ""
-	@echo "Setup & Dependencies:"
-	@echo "  setup          Install all dependencies (Java/Node/Python)"
-	@echo "  setup-java     Install Java dependencies (Maven)"
-	@echo "  setup-node     Install Node.js dependencies"
-	@echo "  setup-python   Install Python dependencies"
+	@echo "Основные команды:"
+	@echo "  up          - Поднять все микросервисы"
+	@echo "  down        - Остановить все микросервисы"
+	@echo "  status      - Проверить статус сервисов"
+	@echo "  logs        - Показать логи всех сервисов"
 	@echo ""
-	@echo "Code Quality:"
-	@echo "  lint           Run all linters (Java/Node/Python)"
-	@echo "  lint-java      Run Java linters (checkstyle)"
-	@echo "  lint-node      Run Node.js linters (eslint)"
-	@echo "  lint-python    Run Python linters (ruff, flake8)"
+	@echo "Разработка:"
+	@echo "  build       - Собрать все микросервисы"
+	@echo "  test        - Запустить тесты"
+	@echo "  clean       - Очистить артефакты сборки"
 	@echo ""
-	@echo "Testing:"
-	@echo "  test           Run all tests"
-	@echo "  test-java      Run Java tests (Maven)"
-	@echo "  test-node      Run Node.js tests (npm)"
-	@echo "  test-python    Run Python tests (pytest)"
-	@echo ""
-	@echo "Building:"
-	@echo "  build          Build all services"
-	@echo "  build-java     Build Java services"
-	@echo "  build-node     Build Node.js services"
-	@echo "  build-python   Build Python services"
-	@echo ""
-	@echo "Docker:"
-	@echo "  docker-build   Build all Docker images"
-	@echo "  docker-up      Start all services with Docker Compose"
-	@echo "  docker-down    Stop all Docker services"
-	@echo "  docker-logs    Show logs for all services"
-	@echo ""
-	@echo "Gateway & Testing:"
-	@echo "  gateway-test   Test gateway health and routing"
-	@echo "  e2e-smoke      Run end-to-end smoke tests"
-	@echo "  stability-test Run stability tests for all services"
-	@echo ""
-	@echo "Utilities:"
-	@echo "  clean          Clean build artifacts"
-	@echo "  autodev        Run AutoDev with docs scope"
-	@echo "  autodev-all    Run AutoDev with all scope"
+	@echo "Мониторинг:"
+	@echo "  grafana     - Открыть Grafana (http://localhost:3001)"
+	@echo "  prometheus  - Открыть Prometheus (http://localhost:9090)"
+	@echo "  jaeger      - Открыть Jaeger (http://localhost:16686)"
 
-# Setup targets
-setup: setup-java setup-node setup-python
-	@echo "✅ All dependencies installed"
+up: ## Поднять все микросервисы
+	@echo "🚀 Запускаем SmartJARVIS микросервисы..."
+	docker-compose -f infrastructure/docker/docker-compose.yml up -d
+	@echo "✅ Все сервисы запущены!"
+	@echo "🌐 Web UI: http://localhost:3000"
+	@echo "📊 Grafana: http://localhost:3001"
 
-setup-java:
-	@echo "📦 Installing Java dependencies..."
-	mvn clean install -DskipTests
+down: ## Остановить все микросервисы
+	@echo "🛑 Останавливаем SmartJARVIS микросервисы..."
+	docker-compose -f infrastructure/docker/docker-compose.yml down
+	@echo "✅ Все сервисы остановлены!"
 
-setup-node:
-	@echo "📦 Installing Node.js dependencies..."
-	cd nlp-engine && npm ci
+status: ## Проверить статус сервисов
+	@echo "📊 Статус SmartJARVIS микросервисов:"
+	docker-compose -f infrastructure/docker/docker-compose.yml ps
 
-setup-python:
-	@echo "📦 Installing Python dependencies..."
-	cd speech-service && pip install -r requirements.txt
+logs: ## Показать логи всех сервисов
+	@echo "📋 Логи SmartJARVIS микросервисов:"
+	docker-compose -f infrastructure/docker/docker-compose.yml logs -f --tail=100
 
-# Linting targets
-lint: lint-java lint-node lint-python
-	@echo "✅ All linters passed"
+build: ## Собрать все микросервисы
+	@echo "🔨 Сборка всех микросервисов..."
+	@for service in services/*/; do \
+		if [ -f "$$service/pom.xml" ]; then \
+			echo "Building Java service: $$service"; \
+			cd "$$service" && mvn clean package -DskipTests && cd ../..; \
+		elif [ -f "$$service/requirements.txt" ]; then \
+			echo "Building Python service: $$service"; \
+			cd "$$service" && pip install -r requirements.txt && cd ../..; \
+		elif [ -f "$$service/package.json" ]; then \
+			echo "Building Node.js service: $$service"; \
+			cd "$$service" && npm install && npm run build && cd ../..; \
+		fi; \
+	done
+	@echo "✅ Все микросервисы собраны!"
 
-lint-java:
-	@echo "🔍 Running Java linters..."
-	mvn checkstyle:check
+test: ## Запустить тесты
+	@echo "🧪 Запуск тестов всех микросервисов..."
+	@for service in services/*/; do \
+		if [ -f "$$service/pom.xml" ]; then \
+			echo "Testing Java service: $$service"; \
+			cd "$$service" && mvn test && cd ../..; \
+		elif [ -f "$$service/requirements.txt" ]; then \
+			echo "Testing Python service: $$service"; \
+			cd "$$service" && python -m pytest && cd ../..; \
+		elif [ -f "$$service/package.json" ]; then \
+			echo "Testing Node.js service: $$service"; \
+			cd "$$service" && npm test && cd ../..; \
+		fi; \
+	done
+	@echo "✅ Все тесты пройдены!"
 
-lint-node:
-	@echo "🔍 Running Node.js linters..."
-	cd nlp-engine && npm run lint
+clean: ## Очистить артефакты сборки
+	@echo "🧹 Очистка артефактов сборки..."
+	find . -name "target" -type d -exec rm -rf {} + 2>/dev/null || true
+	find . -name "node_modules" -type d -exec rm -rf {} + 2>/dev/null || true
+	find . -name "dist" -type d -exec rm -rf {} + 2>/dev/null || true
+	find . -name "*.log" -delete 2>/dev/null || true
+	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	@echo "✅ Очистка завершена!"
 
-lint-python:
-	@echo "🔍 Running Python linters..."
-	cd speech-service && ruff check . && flake8 .
+grafana: ## Открыть Grafana
+	@echo "📊 Открываем Grafana..."
+	@command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:3001 || \
+	command -v open >/dev/null 2>&1 && open http://localhost:3001 || \
+	echo "Откройте http://localhost:3001 в браузере"
 
-# Testing targets
-test: test-java test-node test-python
-	@echo "✅ All tests passed"
+prometheus: ## Открыть Prometheus
+	@echo "📈 Открываем Prometheus..."
+	@command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:9090 || \
+	command -v open >/dev/null 2>&1 && open http://localhost:9090 || \
+	echo "Откройте http://localhost:9090 в браузере"
 
-test-java:
-	@echo "🧪 Running Java tests..."
-	mvn test
-
-test-node:
-	@echo "🧪 Running Node.js tests..."
-	cd nlp-engine && npm test
-
-test-python:
-	@echo "🧪 Running Python tests..."
-	cd speech-service && pytest -q
-
-# Building targets
-build: build-java build-node build-python
-	@echo "✅ All services built"
-
-build-java:
-	@echo "🔨 Building Java services..."
-	mvn package -DskipTests
-
-build-node:
-	@echo "🔨 Building Node.js services..."
-	cd nlp-engine && npm run build
-
-build-python:
-	@echo "🔨 Building Python services..."
-	cd speech-service && python -m py_compile main.py
-
-# Docker targets
-docker-build:
-	@echo "🐳 Building Docker images..."
-	docker build -t speech-service:dev speech-service/
-	docker build -t nlp-engine:dev nlp-engine/
-	docker build -t jarvis-desktop:dev jarvis-desktop/
-	docker build -t task-service:dev task-service/
-	docker build -t gateway:dev gateway/
-
-docker-up:
-	@echo "🐳 Starting Docker services..."
-	cd docker && docker-compose up -d
-
-docker-down:
-	@echo "🐳 Stopping Docker services..."
-	cd docker && docker-compose down
-
-docker-logs:
-	@echo "📋 Showing Docker logs..."
-	cd docker && docker-compose logs -f
-
-# Gateway and E2E testing
-gateway-test:
-	@echo "🚪 Testing Gateway health and routing..."
-	./scripts/test-gateway.sh
-
-e2e-smoke: gateway-test
-	@echo "🧪 Running end-to-end smoke tests..."
-	./scripts/stability-test.sh
-
-stability-test:
-	@echo "🧪 Running stability tests..."
-	./scripts/stability-test.sh
-
-# Utility targets
-clean:
-	@echo "🧹 Cleaning build artifacts..."
-	mvn clean
-	cd nlp-engine && rm -rf dist/ node_modules/.cache/
-	cd speech-service && find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -name "*.pyc" -delete 2>/dev/null || true
-
-# AutoDev targets
-autodev:
-	@echo "🤖 Running AutoDev with docs scope..."
-	GH_TOKEN=${GH_TOKEN} ./scripts/gh-dispatch-autodev.sh docs
-
-autodev-all:
-	@echo "🤖 Running AutoDev with all scope..."
-	GH_TOKEN=${GH_TOKEN} ./scripts/gh-dispatch-autodev.sh all
-
-# Health check targets
-health:
-	@echo "🏥 Checking service health..."
-	@curl -s http://localhost:8080/actuator/health || echo "❌ Gateway not responding"
-	@curl -s http://localhost:8081/actuator/health || echo "❌ Task Service not responding"
-	@curl -s http://localhost:3001/api/health || echo "❌ NLP Engine not responding"
-	@curl -s http://localhost:8083/health || echo "❌ Speech Service not responding"
-
-# Development workflow
-dev: setup lint test build
-	@echo "🚀 Development workflow completed successfully!"
-
+jaeger: ## Открыть Jaeger
+	@echo "🔍 Открываем Jaeger..."
+	@command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:16686 || \
+	command -v open >/dev/null 2>&1 && open http://localhost:16686 || \
+	echo "Откройте http://localhost:16686 в браузере"
