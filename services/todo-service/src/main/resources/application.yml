@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: todo-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  # MongoDB configuration
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/smartjarvis}
+      database: smartjarvis
+
+  # Kafka configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    schema-registry:
+      url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    consumer:
+      group-id: todo-service
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        specific.avro.reader: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        acks: all
+        retries: 3
+        enable.idempotence: true
+
+# Server configuration
+server:
+  port: ${SERVER_PORT:8086}
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      service: todo-service
+
+# Logging
+logging:
+  level:
+    com.smartjarvis: ${LOG_LEVEL:INFO}
+    org.springframework.kafka: WARN
+    org.springframework.data.mongodb: INFO
+
+# Custom Todo configuration
+smartjarvis:
+  todo:
+    default-due-time: "09:00"
+    max-todos-per-user: 1000
+    auto-cleanup-completed: true
+    cleanup-after-days: 30
+
+---
+# Docker profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  data:
+    mongodb:
+      uri: mongodb://mongodb:27017/smartjarvis
+  kafka:
+    bootstrap-servers: kafka:29092
+    schema-registry:
+      url: http://schema-registry:8081
+
+---
+# Test profile
+spring:
+  config:
+    activate:
+      on-profile: test
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/smartjarvis_test
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+
+logging:
+  level:
+    com.smartjarvis: DEBUG

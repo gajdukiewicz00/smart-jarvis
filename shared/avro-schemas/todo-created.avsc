@@ -1,0 +1,46 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "TodoCreatedEvent",
+  "doc": "Event when a new todo is created",
+  "fields": [
+    {
+      "name": "todoId",
+      "type": "string",
+      "doc": "Unique todo identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string", 
+      "doc": "User who created the todo"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "doc": "Todo title"
+    },
+    {
+      "name": "description",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Todo description"
+    },
+    {
+      "name": "dueDate",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Due date as Unix timestamp"
+    },
+    {
+      "name": "priority",
+      "type": "string",
+      "default": "NORMAL",
+      "doc": "Priority level"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Creation timestamp"
+    }
+  ]
+}

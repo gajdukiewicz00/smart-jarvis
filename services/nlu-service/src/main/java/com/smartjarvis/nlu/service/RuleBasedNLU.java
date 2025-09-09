@@ -193,15 +193,30 @@ public class RuleBasedNLU {
             new IntentInfo("help", 0.90f)
         );
 
-        // Todo operations
+        // Todo operations - расширенные правила
         patterns.put(
-            Pattern.compile("(?i).*(добавь|создай|сделай|напомни).*(задач|дел|todo).*"),
-            new IntentInfo("todo_create", 0.85f)
+            Pattern.compile("(?i).*(добавь|создай|сделай|напомни).*(задач|дел|todo)\\s+(.+)"),
+            new IntentInfo("todo_create", 0.90f)
         );
         
         patterns.put(
             Pattern.compile("(?i).*(покажи|список|какие).*(задач|дел|todo).*"),
             new IntentInfo("todo_list", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(выполн|готов|сделал|завершил).*(задач|дел)\\s*(\\d+).*"),
+            new IntentInfo("todo_complete", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(удали|убери|отмени).*(задач|дел)\\s*(\\d+).*"),
+            new IntentInfo("todo_delete", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(статистика|сколько|количество).*(задач|дел).*"),
+            new IntentInfo("todo_stats", 0.80f)
         );
 
         // Home control

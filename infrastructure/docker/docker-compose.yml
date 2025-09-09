@@ -111,6 +111,26 @@ services:
     networks:
       - smartjarvis-network
 
+  mongodb:
+    image: mongo:7.0
+    hostname: mongodb
+    container_name: smartjarvis-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: jarvis
+      MONGO_INITDB_ROOT_PASSWORD: secret
+      MONGO_INITDB_DATABASE: smartjarvis
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
   # Monitoring Stack
   prometheus:
     image: prom/prometheus:v2.44.0
@@ -279,6 +299,35 @@ services:
     networks:
       - smartjarvis-network
 
+  # Todo Service
+  todo-service:
+    build:
+      context: ../../services/todo-service
+      dockerfile: Dockerfile
+    hostname: todo-service
+    container_name: smartjarvis-todo-service
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MONGODB_URI=mongodb://jarvis:secret@mongodb:27017/smartjarvis
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
   # Voice Gateway Service
   voice-gateway:
     build:
@@ -319,6 +368,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  mongodb_data:
     driver: local
   prometheus_data:
     driver: local

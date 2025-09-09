@@ -76,7 +76,7 @@ public class DialogManager {
             .requiresConfirmation(false)
             .build());
 
-        // Todo operations
+        // Todo operations - расширенные действия
         map.put("todo_create", ResponseAction.builder()
             .action("create_task")
             .targetService("todo-service")
@@ -88,6 +88,27 @@ public class DialogManager {
             .action("list_tasks")
             .targetService("todo-service")
             .responseText("Показываю список задач")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("todo_complete", ResponseAction.builder()
+            .action("complete_task")
+            .targetService("todo-service")
+            .responseText("Отмечаю задачу выполненной")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("todo_delete", ResponseAction.builder()
+            .action("delete_task")
+            .targetService("todo-service")
+            .responseText("Удаляю задачу")
+            .requiresConfirmation(true)  // Требует подтверждения
+            .build());
+            
+        map.put("todo_stats", ResponseAction.builder()
+            .action("get_stats")
+            .targetService("todo-service")
+            .responseText("Показываю статистику задач")
             .requiresConfirmation(false)
             .build());
 
