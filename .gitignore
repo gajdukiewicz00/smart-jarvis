@@ -116,6 +116,9 @@ secrets/
 *.p12
 *.keystore
 
+# License (will be added later - proprietary project)
+LICENSE*
+
 # Local development
 local/
 dev-local/

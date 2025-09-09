@@ -2,7 +2,7 @@
 
 > Персональный «киношный» ассистент, который слышит, понимает и действует локально и приватно.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://openjdk.java.net/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-green.svg)](https://spring.io/projects/spring-boot)
 
@@ -146,7 +146,8 @@ make jaeger      # Открыть Jaeger
 
 ## 📄 Лицензия
 
-Этот проект лицензирован под MIT License - смотрите файл [LICENSE](LICENSE) для деталей.
+Этот проект является проприетарным программным обеспечением. Все права защищены.
+Лицензия будет добавлена позже.
 
 ## 🙏 Благодарности
 
