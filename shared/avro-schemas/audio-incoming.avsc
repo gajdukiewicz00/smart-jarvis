@@ -1,0 +1,40 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "AudioIncomingEvent",
+  "doc": "Event when audio data is received from user",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Unique session identifier"
+    },
+    {
+      "name": "userId", 
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "audioData",
+      "type": "bytes",
+      "doc": "Raw audio data in PCM format"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Unix timestamp in milliseconds"
+    },
+    {
+      "name": "format",
+      "type": "string",
+      "default": "pcm_16khz",
+      "doc": "Audio format specification"
+    },
+    {
+      "name": "duration",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Audio duration in seconds"
+    }
+  ]
+}

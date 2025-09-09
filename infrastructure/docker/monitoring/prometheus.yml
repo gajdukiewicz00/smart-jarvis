@@ -12,42 +12,51 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Task Service (Spring Boot)
-  - job_name: 'task-service'
+  # Voice Gateway Service
+  - job_name: 'voice-gateway'
     static_configs:
-      - targets: ['task-service:8081']
+      - targets: ['voice-gateway:8080']
     metrics_path: '/actuator/prometheus'
-    scrape_interval: 10s
+    scrape_interval: 5s
 
-  # NLP Engine
-  - job_name: 'nlp-engine'
+  # Kafka JMX Metrics
+  - job_name: 'kafka'
     static_configs:
-      - targets: ['nlp-engine:3001']
-    metrics_path: '/api/metrics'
-    scrape_interval: 10s
+      - targets: ['kafka:9101']
 
-  # Speech Service
-  - job_name: 'speech-service'
-    static_configs:
-      - targets: ['speech-service:8083']
-    metrics_path: '/metrics'
-    scrape_interval: 10s
-
-  # Gateway Service
-  - job_name: 'gateway'
-    static_configs:
-      - targets: ['gateway:8080']
-    metrics_path: '/actuator/prometheus'
-    scrape_interval: 10s
-
-  # Redis
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis:6379']
-    scrape_interval: 30s
-
-  # PostgreSQL (if using postgres_exporter)
+  # PostgreSQL Metrics (если добавим exporter)
   - job_name: 'postgres'
     static_configs:
       - targets: ['postgres:5432']
-    scrape_interval: 30s 
+    scrape_interval: 10s
+
+  # Redis Metrics (если добавим exporter)  
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 10s
+
+  # Future microservices
+  - job_name: 'stt-service'
+    static_configs:
+      - targets: ['stt-service:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'nlu-service'
+    static_configs:
+      - targets: ['nlu-service:8083']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+
+  - job_name: 'dm-service'
+    static_configs:
+      - targets: ['dm-service:8084']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+
+  - job_name: 'tts-service'
+    static_configs:
+      - targets: ['tts-service:8085']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
