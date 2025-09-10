@@ -359,6 +359,36 @@ services:
     networks:
       - smartjarvis-network
 
+  # Home Bridge Service
+  home-bridge:
+    build:
+      context: ../../services/home-bridge
+      dockerfile: Dockerfile
+    hostname: home-bridge
+    container_name: smartjarvis-home-bridge
+    ports:
+      - "8088:8088"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+      - HA_URL=${HA_URL:-http://host.docker.internal:8123}
+      - HA_TOKEN=${HA_TOKEN:-your_token_here}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
   # Voice Gateway Service
   voice-gateway:
     build:

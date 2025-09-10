@@ -1,0 +1,52 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "HomeCommandEvent",
+  "doc": "Event for home automation commands",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "domain",
+      "type": "string",
+      "doc": "Home Assistant domain (light, media_player, scene)"
+    },
+    {
+      "name": "service",
+      "type": "string",
+      "doc": "Home Assistant service name"
+    },
+    {
+      "name": "entityId",
+      "type": "string",
+      "doc": "Target entity ID"
+    },
+    {
+      "name": "parameters",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "Command parameters"
+    },
+    {
+      "name": "room",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Target room name"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Command timestamp"
+    }
+  ]
+}

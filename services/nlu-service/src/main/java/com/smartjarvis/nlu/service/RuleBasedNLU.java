@@ -86,6 +86,9 @@ public class RuleBasedNLU {
             case "device_open_app" -> extractAppEntities(text, entities);
             case "device_open_url" -> extractUrlEntities(text, entities);
             case "device_media" -> extractMediaEntities(text, entities);
+            case "home_light_control" -> extractHomeLightEntities(text, entities);
+            case "home_media_control" -> extractHomeMediaEntities(text, entities);
+            case "home_scene" -> extractSceneEntities(text, entities);
         }
 
         return entities;
@@ -223,15 +226,35 @@ public class RuleBasedNLU {
             new IntentInfo("todo_stats", 0.80f)
         );
 
-        // Home control
+        // Home control - расширенные правила
         patterns.put(
-            Pattern.compile("(?i).*(включи|выключи|переключи).*(свет|лампа|освещение).*"),
-            new IntentInfo("home_control", 0.90f)
+            Pattern.compile("(?i).*(включи|выключи|переключи).*(свет|лампа|освещение).*в\\s+(\\w+).*"),
+            new IntentInfo("home_light_control", 0.90f)
         );
         
         patterns.put(
-            Pattern.compile("(?i).*(включи|выключи|громче|тише).*(музык|звук|аудио).*"),
-            new IntentInfo("home_control", 0.90f)
+            Pattern.compile("(?i).*(включи|выключи|переключи).*(свет|лампа|освещение).*"),
+            new IntentInfo("home_light_control", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(музык|звук|аудио).*(включи|выключи|громче|тише|громкость).*в\\s+(\\w+).*"),
+            new IntentInfo("home_media_control", 0.90f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(музык|звук|аудио).*(включи|выключи|громче|тише|громкость).*"),
+            new IntentInfo("home_media_control", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(включи|активируй|запусти).*(сцен\\w*)\\s+(\\w+).*"),
+            new IntentInfo("home_scene", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(режим|сцена)\\s+(\\w+).*"),
+            new IntentInfo("home_scene", 0.80f)
         );
 
         // Time queries
@@ -397,6 +420,99 @@ public class RuleBasedNLU {
         } else {
             entities.put("media_action", "play-pause"); // Default
         }
+    }
+
+    /**
+     * Extract home light control entities
+     */
+    private void extractHomeLightEntities(String text, Map<String, String> entities) {
+        // Extract room
+        Pattern roomPattern = Pattern.compile("в\\s+(гостин|спальн|кухн|ванн|коридор|кабинет|прихож)\\w*");
+        Matcher roomMatcher = roomPattern.matcher(text);
+        if (roomMatcher.find()) {
+            String room = roomMatcher.group(1);
+            entities.put("room", normalizeRoom(room));
+        }
+
+        // Extract light action
+        if (text.contains("включи") || text.contains("включить")) {
+            entities.put("action", "turn_on");
+        } else if (text.contains("выключи") || text.contains("выключить")) {
+            entities.put("action", "turn_off");
+        } else if (text.contains("переключи")) {
+            entities.put("action", "toggle");
+        }
+
+        // Extract brightness if present
+        Pattern brightnessPattern = Pattern.compile("(\\d+)\\s*%|яркость\\s+(\\d+)");
+        Matcher brightnessMatcher = brightnessPattern.matcher(text);
+        if (brightnessMatcher.find()) {
+            String brightness = brightnessMatcher.group(1) != null ? 
+                              brightnessMatcher.group(1) : brightnessMatcher.group(2);
+            entities.put("brightness", brightness);
+        }
+    }
+
+    /**
+     * Extract home media control entities
+     */
+    private void extractHomeMediaEntities(String text, Map<String, String> entities) {
+        // Extract room
+        Pattern roomPattern = Pattern.compile("в\\s+(гостин|спальн|кухн|везде|компьютер)\\w*");
+        Matcher roomMatcher = roomPattern.matcher(text);
+        if (roomMatcher.find()) {
+            String room = roomMatcher.group(1);
+            entities.put("room", normalizeRoom(room));
+        }
+
+        // Extract media action
+        if (text.contains("включи") || text.contains("включить")) {
+            entities.put("media_action", "play");
+        } else if (text.contains("выключи") || text.contains("выключить")) {
+            entities.put("media_action", "stop");
+        } else if (text.contains("пауза")) {
+            entities.put("media_action", "pause");
+        } else if (text.contains("громче")) {
+            entities.put("media_action", "volume_up");
+        } else if (text.contains("тише")) {
+            entities.put("media_action", "volume_down");
+        }
+
+        // Extract volume level
+        Pattern volumePattern = Pattern.compile("громкость\\s+(\\d+)|до\\s+(\\d+)\\s*%");
+        Matcher volumeMatcher = volumePattern.matcher(text);
+        if (volumeMatcher.find()) {
+            String volume = volumeMatcher.group(1) != null ? 
+                           volumeMatcher.group(1) : volumeMatcher.group(2);
+            entities.put("volume_level", volume);
+        }
+    }
+
+    /**
+     * Extract scene entities
+     */
+    private void extractSceneEntities(String text, Map<String, String> entities) {
+        // Extract scene name
+        Pattern scenePattern = Pattern.compile("(?:сцен\\w*|режим)\\s+(фокус|релакс|сон|работа|кино|вечеринка|утро|вечер)");
+        Matcher sceneMatcher = scenePattern.matcher(text);
+        if (sceneMatcher.find()) {
+            entities.put("scene_name", sceneMatcher.group(1));
+        }
+    }
+
+    /**
+     * Normalize room names
+     */
+    private String normalizeRoom(String room) {
+        return switch (room.toLowerCase()) {
+            case "гостин" -> "гостиная";
+            case "спальн" -> "спальня";
+            case "кухн" -> "кухня";
+            case "ванн" -> "ванная";
+            case "коридор", "прихож" -> "коридор";
+            case "кабинет" -> "кабинет";
+            default -> room;
+        };
     }
 
     /**

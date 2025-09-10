@@ -112,7 +112,29 @@ public class DialogManager {
             .requiresConfirmation(false)
             .build());
 
-        // Home control
+        // Home control - расширенные действия
+        map.put("home_light_control", ResponseAction.builder()
+            .action("control_light")
+            .targetService("home-bridge")
+            .responseText("Управляю освещением")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("home_media_control", ResponseAction.builder()
+            .action("control_media")
+            .targetService("home-bridge")
+            .responseText("Управляю медиа")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("home_scene", ResponseAction.builder()
+            .action("activate_scene")
+            .targetService("home-bridge")
+            .responseText("Активирую сцену")
+            .requiresConfirmation(false)
+            .build());
+            
+        // Legacy home control (fallback)
         map.put("home_control", ResponseAction.builder()
             .action("control_device")
             .targetService("home-bridge")
