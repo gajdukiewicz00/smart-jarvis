@@ -328,6 +328,37 @@ services:
     networks:
       - smartjarvis-network
 
+  # Device Agent Service
+  device-agent:
+    build:
+      context: ../../services/device-agent
+      dockerfile: Dockerfile
+    hostname: device-agent
+    container_name: smartjarvis-device-agent
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    # For real device control, uncomment these:
+    # network_mode: "host"
+    # privileged: true
+    volumes:
+      - /tmp:/host/tmp  # For screenshot access
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
   # Voice Gateway Service
   voice-gateway:
     build:

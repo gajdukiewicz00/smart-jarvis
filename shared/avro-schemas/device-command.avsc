@@ -1,0 +1,45 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "DeviceCommandEvent",
+  "doc": "Event for device control commands",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "command",
+      "type": "string",
+      "doc": "Device command to execute"
+    },
+    {
+      "name": "commandType",
+      "type": {
+        "type": "enum",
+        "name": "DeviceCommandType",
+        "symbols": ["VOLUME", "MEDIA", "APP", "SCREENSHOT", "LOCK", "URL"]
+      },
+      "doc": "Type of device command"
+    },
+    {
+      "name": "parameters",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "Command parameters"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Command timestamp"
+    }
+  ]
+}

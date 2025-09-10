@@ -82,6 +82,10 @@ public class RuleBasedNLU {
             case "home_control" -> extractHomeControlEntities(text, entities);
             case "time_query" -> extractTimeEntities(text, entities);
             case "weather_query" -> extractWeatherEntities(text, entities);
+            case "device_volume_set", "device_volume_up", "device_volume_down" -> extractVolumeEntities(text, entities);
+            case "device_open_app" -> extractAppEntities(text, entities);
+            case "device_open_url" -> extractUrlEntities(text, entities);
+            case "device_media" -> extractMediaEntities(text, entities);
         }
 
         return entities;
@@ -242,6 +246,47 @@ public class RuleBasedNLU {
             new IntentInfo("weather_query", 0.80f)
         );
 
+        // Device control commands
+        patterns.put(
+            Pattern.compile("(?i).*(громче|увеличь громкость|сделай громче).*"),
+            new IntentInfo("device_volume_up", 0.90f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(тише|уменьши громкость|сделай тише).*"),
+            new IntentInfo("device_volume_down", 0.90f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(громкость)\\s+(\\d+).*"),
+            new IntentInfo("device_volume_set", 0.90f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(открой|запусти|включи)\\s+(\\w+).*"),
+            new IntentInfo("device_open_app", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(открой|перейди)\\s+(https?://\\S+|www\\.\\S+).*"),
+            new IntentInfo("device_open_url", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(скриншот|снимок экрана|сделай снимок).*"),
+            new IntentInfo("device_screenshot", 0.90f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(заблокируй|блокировка|заблокировать экран).*"),
+            new IntentInfo("device_lock", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(пауза|воспроизведение|плей|стоп музыка).*"),
+            new IntentInfo("device_media", 0.85f)
+        );
+
         // System commands
         patterns.put(
             Pattern.compile("(?i).*(стоп|остановись|хватит|отмена).*"),
@@ -273,6 +318,85 @@ public class RuleBasedNLU {
         patterns.put("room", Pattern.compile("гостин|спальн|кухн|ванн|коридор|прихож"));
 
         return patterns;
+    }
+
+    /**
+     * Extract volume-related entities
+     */
+    private void extractVolumeEntities(String text, Map<String, String> entities) {
+        // Extract volume level
+        Pattern volumePattern = Pattern.compile("(?:громкость|volume)\\s+(\\d+)");
+        Matcher volumeMatcher = volumePattern.matcher(text);
+        if (volumeMatcher.find()) {
+            entities.put("volume", volumeMatcher.group(1));
+        }
+
+        // Extract volume action
+        if (text.contains("громче") || text.contains("увеличь")) {
+            entities.put("volume_action", "up");
+        } else if (text.contains("тише") || text.contains("уменьши")) {
+            entities.put("volume_action", "down");
+        }
+    }
+
+    /**
+     * Extract application entities
+     */
+    private void extractAppEntities(String text, Map<String, String> entities) {
+        // Extract application name
+        Pattern appPattern = Pattern.compile("(?:открой|запусти|включи)\\s+(\\w+)");
+        Matcher appMatcher = appPattern.matcher(text);
+        if (appMatcher.find()) {
+            String appName = appMatcher.group(1).toLowerCase();
+            
+            // Map common names
+            String mappedApp = switch (appName) {
+                case "код", "vscode" -> "code";
+                case "браузер", "интернет" -> "firefox";
+                case "терминал", "консоль" -> "terminal";
+                case "файлы", "проводник" -> "files";
+                case "калькулятор" -> "calculator";
+                case "настройки" -> "settings";
+                default -> appName;
+            };
+            
+            entities.put("app_name", mappedApp);
+        }
+    }
+
+    /**
+     * Extract URL entities
+     */
+    private void extractUrlEntities(String text, Map<String, String> entities) {
+        // Extract URL
+        Pattern urlPattern = Pattern.compile("(https?://\\S+|www\\.\\S+)");
+        Matcher urlMatcher = urlPattern.matcher(text);
+        if (urlMatcher.find()) {
+            String url = urlMatcher.group(1);
+            if (!url.startsWith("http")) {
+                url = "https://" + url;
+            }
+            entities.put("url", url);
+        }
+    }
+
+    /**
+     * Extract media control entities
+     */
+    private void extractMediaEntities(String text, Map<String, String> entities) {
+        if (text.contains("пауза") || text.contains("pause")) {
+            entities.put("media_action", "pause");
+        } else if (text.contains("плей") || text.contains("воспроизведение") || text.contains("play")) {
+            entities.put("media_action", "play");
+        } else if (text.contains("стоп") || text.contains("stop")) {
+            entities.put("media_action", "stop");
+        } else if (text.contains("дальше") || text.contains("next")) {
+            entities.put("media_action", "next");
+        } else if (text.contains("назад") || text.contains("previous")) {
+            entities.put("media_action", "previous");
+        } else {
+            entities.put("media_action", "play-pause"); // Default
+        }
     }
 
     /**

@@ -136,6 +136,63 @@ public class DialogManager {
             .requiresConfirmation(false)
             .build());
 
+        // Device control commands
+        map.put("device_volume_up", ResponseAction.builder()
+            .action("set_volume")
+            .targetService("device-agent")
+            .responseText("Делаю громче")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("device_volume_down", ResponseAction.builder()
+            .action("set_volume")
+            .targetService("device-agent")
+            .responseText("Делаю тише")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("device_volume_set", ResponseAction.builder()
+            .action("set_volume")
+            .targetService("device-agent")
+            .responseText("Устанавливаю громкость")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("device_open_app", ResponseAction.builder()
+            .action("open_app")
+            .targetService("device-agent")
+            .responseText("Открываю приложение")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("device_open_url", ResponseAction.builder()
+            .action("open_url")
+            .targetService("device-agent")
+            .responseText("Открываю ссылку")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("device_screenshot", ResponseAction.builder()
+            .action("take_screenshot")
+            .targetService("device-agent")
+            .responseText("Делаю скриншот")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("device_lock", ResponseAction.builder()
+            .action("lock_screen")
+            .targetService("device-agent")
+            .responseText("Блокирую экран")
+            .requiresConfirmation(true)  // Требует подтверждения
+            .build());
+            
+        map.put("device_media", ResponseAction.builder()
+            .action("media_control")
+            .targetService("device-agent")
+            .responseText("Управляю воспроизведением")
+            .requiresConfirmation(false)
+            .build());
+
         // Stop command
         map.put("stop", ResponseAction.builder()
             .action("stop_all")
@@ -179,6 +236,29 @@ public class DialogManager {
                 }
                 if (entities.containsKey("number")) {
                     parameters.put("value", entities.get("number"));
+                }
+            }
+            case "device_volume_up", "device_volume_down", "device_volume_set" -> {
+                if (entities.containsKey("volume")) {
+                    parameters.put("volume", entities.get("volume"));
+                }
+                if (entities.containsKey("volume_action")) {
+                    parameters.put("volume_action", entities.get("volume_action"));
+                }
+            }
+            case "device_open_app" -> {
+                if (entities.containsKey("app_name")) {
+                    parameters.put("app_name", entities.get("app_name"));
+                }
+            }
+            case "device_open_url" -> {
+                if (entities.containsKey("url")) {
+                    parameters.put("url", entities.get("url"));
+                }
+            }
+            case "device_media" -> {
+                if (entities.containsKey("media_action")) {
+                    parameters.put("media_action", entities.get("media_action"));
                 }
             }
         }
