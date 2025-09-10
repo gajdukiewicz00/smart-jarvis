@@ -389,6 +389,25 @@ services:
     networks:
       - smartjarvis-network
 
+  # Web UI
+  web:
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    hostname: web
+    container_name: smartjarvis-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - voice-gateway
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - smartjarvis-network
+
   # Voice Gateway Service
   voice-gateway:
     build:
