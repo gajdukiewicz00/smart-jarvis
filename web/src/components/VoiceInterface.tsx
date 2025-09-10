@@ -6,6 +6,8 @@ interface VoiceInterfaceProps {
   isConnected: boolean
   isRecording: boolean
   audioLevel: number
+  isTtsActive?: boolean
+  bargeInTriggered?: boolean
   onToggleRecording: () => void
 }
 
@@ -13,11 +15,15 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
   isConnected,
   isRecording,
   audioLevel,
+  isTtsActive = false,
+  bargeInTriggered = false,
   onToggleRecording
 }) => {
   const getButtonState = () => {
     if (!isConnected) return 'disconnected'
+    if (bargeInTriggered) return 'bargein'
     if (isRecording) return 'recording'
+    if (isTtsActive) return 'speaking'
     return 'ready'
   }
 
@@ -75,6 +81,8 @@ const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
           {buttonState === 'disconnected' && 'Подключение к сервису...'}
           {buttonState === 'ready' && 'Нажмите для записи команды'}
           {buttonState === 'recording' && 'Говорите... (нажмите для остановки)'}
+          {buttonState === 'speaking' && 'Джарвис говорит... (можете перебить)'}
+          {buttonState === 'bargein' && 'Перебивка зафиксирована!'}
         </p>
         
         {buttonState === 'ready' && (

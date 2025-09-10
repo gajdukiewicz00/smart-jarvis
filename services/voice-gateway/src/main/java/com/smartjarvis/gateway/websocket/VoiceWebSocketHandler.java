@@ -4,6 +4,7 @@ import com.smartjarvis.events.AudioIncomingEvent;
 import com.smartjarvis.events.WebSocketConnectionEvent;
 import com.smartjarvis.events.ConnectionEventType;
 import com.smartjarvis.gateway.metrics.VoiceGatewayMetrics;
+import com.smartjarvis.gateway.service.VoiceActivityDetector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -32,6 +33,7 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final VoiceGatewayMetrics metrics;
+    private final VoiceActivityDetector vadService;
     
     // Active sessions storage
     private final ConcurrentMap<String, WebSocketSession> activeSessions = new ConcurrentHashMap<>();
@@ -39,6 +41,10 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
     // Kafka topics
     private static final String AUDIO_TOPIC = "audio.incoming";
     private static final String CONNECTION_TOPIC = "websocket.connection";
+    private static final String BARGEIN_TOPIC = "voice.bargein";
+    
+    // TTS state tracking for barge-in
+    private final ConcurrentMap<String, Boolean> ttsActiveMap = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -100,21 +106,34 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
         String sessionId = session.getId();
         String userId = extractUserId(session);
         ByteBuffer payload = message.getPayload();
+        byte[] audioData = payload.array();
         
-        log.debug("Received audio data: sessionId={}, bytes={}", sessionId, payload.remaining());
+        log.debug("Received audio data: sessionId={}, bytes={}", sessionId, audioData.length);
         
         // Start timing for metrics
         var timer = metrics.startAudioProcessingTimer();
         
         try {
-            // Create audio event
+            // Check for barge-in before processing audio
+            boolean isTtsActive = ttsActiveMap.getOrDefault(sessionId, false);
+            
+            if (vadService.shouldTriggerBargeIn(sessionId, audioData, isTtsActive)) {
+                // Trigger barge-in
+                publishBargeInEvent(sessionId, userId);
+                ttsActiveMap.put(sessionId, false); // Mark TTS as stopped
+                
+                // Send immediate feedback to client
+                sendTextMessage(session, "{\"type\":\"barge_in\",\"message\":\"TTS interrupted\"}");
+            }
+            
+            // Always process audio for STT (even during barge-in)
             AudioIncomingEvent event = AudioIncomingEvent.newBuilder()
                 .setSessionId(sessionId)
                 .setUserId(userId != null ? userId : "anonymous")
-                .setAudioData(payload)
+                .setAudioData(ByteBuffer.wrap(audioData))
                 .setTimestamp(Instant.now().toEpochMilli())
                 .setFormat("pcm_16khz")
-                .setDuration(calculateAudioDuration(payload.remaining()))
+                .setDuration(calculateAudioDuration(audioData.length))
                 .build();
             
             // Publish to Kafka
@@ -129,7 +148,7 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
             log.error("Failed to process audio message: sessionId={}", sessionId, e);
             
             // Send error message back to client
-            sendTextMessage(session, "Error processing audio: " + e.getMessage());
+            sendTextMessage(session, "{\"type\":\"error\",\"message\":\"" + e.getMessage() + "\"}");
             
             // Publish error event
             publishErrorEvent(sessionId, userId, e.getMessage());
@@ -220,5 +239,72 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
 
     public boolean isSessionActive(String sessionId) {
         return activeSessions.containsKey(sessionId);
+    }
+    
+    /**
+     * Publish barge-in event
+     */
+    private void publishBargeInEvent(String sessionId, String userId) {
+        try {
+            // Create simplified barge-in event
+            Map<String, Object> bargeInEvent = Map.of(
+                "sessionId", sessionId,
+                "userId", userId != null ? userId : "anonymous",
+                "timestamp", Instant.now().toEpochMilli(),
+                "reason", "voice_detected"
+            );
+            
+            kafkaTemplate.send(BARGEIN_TOPIC, sessionId, bargeInEvent);
+            
+            log.info("Barge-in event published: sessionId={}", sessionId);
+            
+        } catch (Exception e) {
+            log.error("Failed to publish barge-in event: sessionId={}", sessionId, e);
+        }
+    }
+    
+    /**
+     * Set TTS active state for session
+     */
+    public void setTtsActive(String sessionId, boolean active) {
+        if (active) {
+            ttsActiveMap.put(sessionId, true);
+        } else {
+            ttsActiveMap.remove(sessionId);
+        }
+        log.debug("TTS state updated: sessionId={}, active={}", sessionId, active);
+    }
+    
+    /**
+     * Check if TTS is active for session
+     */
+    public boolean isTtsActive(String sessionId) {
+        return ttsActiveMap.getOrDefault(sessionId, false);
+    }
+    
+    /**
+     * Handle TTS start notification
+     */
+    public void handleTtsStart(String sessionId) {
+        setTtsActive(sessionId, true);
+        
+        // Send TTS start notification to client
+        WebSocketSession session = activeSessions.get(sessionId);
+        if (session != null && session.isOpen()) {
+            sendTextMessage(session, "{\"type\":\"tts_start\",\"message\":\"Speaking...\"}");
+        }
+    }
+    
+    /**
+     * Handle TTS stop notification
+     */
+    public void handleTtsStop(String sessionId) {
+        setTtsActive(sessionId, false);
+        
+        // Send TTS stop notification to client
+        WebSocketSession session = activeSessions.get(sessionId);
+        if (session != null && session.isOpen()) {
+            sendTextMessage(session, "{\"type\":\"tts_stop\",\"message\":\"Finished speaking\"}");
+        }
     }
 }

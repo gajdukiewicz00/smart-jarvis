@@ -21,6 +21,8 @@ function App() {
     isRecording, 
     audioLevel,
     lastResponse,
+    isTtsActive,
+    bargeInTriggered,
     connect,
     disconnect,
     startRecording,
@@ -115,6 +117,8 @@ function App() {
                   isConnected={isConnected}
                   isRecording={isRecording}
                   audioLevel={audioLevel}
+                  isTtsActive={isTtsActive}
+                  bargeInTriggered={bargeInTriggered}
                   onToggleRecording={handleVoiceToggle}
                 />
                 

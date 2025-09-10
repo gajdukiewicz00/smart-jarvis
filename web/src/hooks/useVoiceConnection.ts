@@ -6,6 +6,8 @@ interface VoiceConnectionState {
   audioLevel: number
   lastResponse: string | null
   error: string | null
+  isTtsActive: boolean
+  bargeInTriggered: boolean
 }
 
 export const useVoiceConnection = () => {
@@ -14,7 +16,9 @@ export const useVoiceConnection = () => {
     isRecording: false,
     audioLevel: 0,
     lastResponse: null,
-    error: null
+    error: null,
+    isTtsActive: false,
+    bargeInTriggered: false
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -38,7 +42,35 @@ export const useVoiceConnection = () => {
       
       ws.onmessage = (event) => {
         console.log('WebSocket message:', event.data)
-        setState(prev => ({ ...prev, lastResponse: event.data }))
+        
+        try {
+          // Try to parse as JSON for control messages
+          const data = JSON.parse(event.data)
+          
+          if (data.type === 'tts_start') {
+            setState(prev => ({ ...prev, isTtsActive: true }))
+            playTtsStartSound()
+          } else if (data.type === 'tts_stop') {
+            setState(prev => ({ ...prev, isTtsActive: false }))
+            playTtsStopSound()
+          } else if (data.type === 'barge_in') {
+            setState(prev => ({ 
+              ...prev, 
+              isTtsActive: false, 
+              bargeInTriggered: true,
+              lastResponse: 'Перебивка зафиксирована'
+            }))
+            playBargeInSound()
+            
+            // Clear barge-in flag after 2 seconds
+            setTimeout(() => {
+              setState(prev => ({ ...prev, bargeInTriggered: false }))
+            }, 2000)
+          }
+        } catch {
+          // Plain text response
+          setState(prev => ({ ...prev, lastResponse: event.data }))
+        }
       }
       
       ws.onclose = () => {
@@ -177,12 +209,41 @@ export const useVoiceConnection = () => {
     }
   }, [disconnect, stopRecording])
 
+  // Audio feedback functions
+  const playTone = (frequency: number, duration: number) => {
+    try {
+      const audioContext = new AudioContext()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
+      oscillator.type = 'sine'
+      
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration / 1000)
+      
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + duration / 1000)
+    } catch (error) {
+      console.warn('Audio feedback failed:', error)
+    }
+  }
+
+  const playTtsStartSound = () => playTone(400, 100)
+  const playTtsStopSound = () => playTone(200, 150)
+  const playBargeInSound = () => playTone(800, 80)
+
   return {
     isConnected: state.isConnected,
     isRecording: state.isRecording,
     audioLevel: state.audioLevel,
     lastResponse: state.lastResponse,
     error: state.error,
+    isTtsActive: state.isTtsActive,
+    bargeInTriggered: state.bargeInTriggered,
     connect,
     disconnect,
     startRecording,
