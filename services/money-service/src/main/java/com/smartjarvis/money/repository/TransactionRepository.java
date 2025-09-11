@@ -1,6 +1,7 @@
 package com.smartjarvis.money.repository;
 
 import com.smartjarvis.money.domain.Transaction;
+import com.smartjarvis.money.domain.PaymentMethod;
 import com.smartjarvis.money.domain.TransactionType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

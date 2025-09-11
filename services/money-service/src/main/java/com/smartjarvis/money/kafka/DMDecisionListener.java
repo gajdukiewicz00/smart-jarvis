@@ -1,6 +1,6 @@
 package com.smartjarvis.money.kafka;
 
-import com.smartjarvis.events.DMDecisionEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartjarvis.money.domain.PaymentMethod;
 import com.smartjarvis.money.domain.TransactionType;
 import com.smartjarvis.money.dto.CreateTransactionRequest;
@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 
 /**
  * Kafka listener for DM decision events
@@ -25,40 +26,46 @@ public class DMDecisionListener {
 
     private final MoneyService moneyService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @KafkaListener(topics = "dm.decision", groupId = "money-service")
-    public void handleDecision(DMDecisionEvent decisionEvent) {
+    public void handleDecision(String message) {
         try {
+            Map<?,?> decisionEvent = objectMapper.readValue(message, Map.class);
             // Only process decisions for money-service
-            if (!"money-service".equals(decisionEvent.getTargetService())) {
+            if (!"money-service".equals(decisionEvent.get("targetService"))) {
                 return;
             }
 
-            log.info("Processing money decision: sessionId={}, action={}", 
-                    decisionEvent.getSessionId(), decisionEvent.getAction());
+            String sessionId = (String) decisionEvent.get("sessionId");
+            String userId = (String) decisionEvent.get("userId");
+            String action = (String) decisionEvent.get("action");
+            @SuppressWarnings("unchecked")
+            Map<String,String> parameters = (Map<String,String>) decisionEvent.get("parameters");
 
-            switch (decisionEvent.getAction()) {
-                case "add_expense" -> handleAddExpense(decisionEvent);
-                case "add_income" -> handleAddIncome(decisionEvent);
-                case "get_balance" -> handleGetBalance(decisionEvent);
-                case "get_expense_report" -> handleGetExpenseReport(decisionEvent);
-                case "get_income_report" -> handleGetIncomeReport(decisionEvent);
-                case "get_financial_stats" -> handleGetFinancialStats(decisionEvent);
-                case "get_category_spending" -> handleGetCategorySpending(decisionEvent);
+            log.info("Processing money decision: sessionId={}, action={}", sessionId, action);
+
+            switch (action) {
+                case "add_expense" -> handleAddExpense(userId, parameters);
+                case "add_income" -> handleAddIncome(userId, parameters);
+                case "get_balance" -> handleGetBalance(userId);
+                case "get_expense_report" -> handleGetExpenseReport(userId, parameters);
+                case "get_income_report" -> handleGetIncomeReport(userId, parameters);
+                case "get_financial_stats" -> handleGetFinancialStats(userId);
+                case "get_category_spending" -> handleGetCategorySpending(userId, parameters);
                 default -> log.warn("Unknown money action: {}", decisionEvent.getAction());
             }
 
         } catch (Exception e) {
-            log.error("Failed to process money decision: sessionId={}", 
-                    decisionEvent.getSessionId(), e);
+            log.error("Failed to process money decision message", e);
         }
     }
 
-    private void handleAddExpense(DMDecisionEvent decision) {
-        String amountStr = decision.getParameters().get("amount");
-        String description = decision.getParameters().get("description");
-        String category = decision.getParameters().get("category");
-        String paymentMethodStr = decision.getParameters().get("payment_method");
+    private void handleAddExpense(String userId, Map<String,String> parameters) {
+        String amountStr = parameters.get("amount");
+        String description = parameters.get("description");
+        String category = parameters.get("category");
+        String paymentMethodStr = parameters.get("payment_method");
 
         if (amountStr == null || description == null) {
             log.warn("Missing required parameters for expense: amount={}, description={}", amountStr, description);
@@ -67,7 +74,7 @@ public class DMDecisionListener {
 
         try {
             CreateTransactionRequest request = new CreateTransactionRequest();
-            request.setUserId(decision.getUserId());
+            request.setUserId(userId);
             request.setDescription(description);
             request.setAmount(new BigDecimal(amountStr));
             request.setType(TransactionType.EXPENSE);
@@ -85,9 +92,9 @@ public class DMDecisionListener {
         }
     }
 
-    private void handleAddIncome(DMDecisionEvent decision) {
-        String amountStr = decision.getParameters().get("amount");
-        String description = decision.getParameters().get("description");
+    private void handleAddIncome(String userId, Map<String,String> parameters) {
+        String amountStr = parameters.get("amount");
+        String description = parameters.get("description");
 
         if (amountStr == null || description == null) {
             log.warn("Missing required parameters for income: amount={}, description={}", amountStr, description);
@@ -96,7 +103,7 @@ public class DMDecisionListener {
 
         try {
             CreateTransactionRequest request = new CreateTransactionRequest();
-            request.setUserId(decision.getUserId());
+            request.setUserId(userId);
             request.setDescription(description);
             request.setAmount(new BigDecimal(amountStr));
             request.setType(TransactionType.INCOME);
@@ -110,21 +117,21 @@ public class DMDecisionListener {
         }
     }
 
-    private void handleGetBalance(DMDecisionEvent decision) {
+    private void handleGetBalance(String userId) {
         try {
-            var balance = moneyService.getCurrentBalance(decision.getUserId());
+            var balance = moneyService.getCurrentBalance(userId);
             log.info("Balance retrieved via voice: userId={}, balance={}", 
-                    decision.getUserId(), balance.getFormattedBalance());
+                    userId, balance.getFormattedBalance());
 
             // TODO: Send balance info to TTS for voice response
             
         } catch (Exception e) {
-            log.error("Failed to get balance via voice: userId={}", decision.getUserId(), e);
+            log.error("Failed to get balance via voice: userId={}", userId, e);
         }
     }
 
-    private void handleGetExpenseReport(DMDecisionEvent decision) {
-        String period = decision.getParameters().get("period");
+    private void handleGetExpenseReport(String userId, Map<String,String> parameters) {
+        String period = parameters.get("period");
         
         try {
             // Calculate date range based on period
@@ -137,44 +144,44 @@ public class DMDecisionListener {
                 default -> to.minusMonths(1);
             };
 
-            var report = moneyService.getExpenseReport(decision.getUserId(), from, to);
+            var report = moneyService.getExpenseReport(userId, from, to);
             log.info("Expense report generated via voice: userId={}, period={}, total={}", 
-                    decision.getUserId(), period, report.getTotalExpenses());
+                    userId, period, report.getTotalExpenses());
 
             // TODO: Send report summary to TTS for voice response
             
         } catch (Exception e) {
-            log.error("Failed to generate expense report via voice: userId={}", decision.getUserId(), e);
+            log.error("Failed to generate expense report via voice: userId={}", userId, e);
         }
     }
 
-    private void handleGetIncomeReport(DMDecisionEvent decision) {
+    private void handleGetIncomeReport(String userId, Map<String,String> parameters) {
         // Similar to expense report but for income
-        log.info("Income report requested via voice: userId={}", decision.getUserId());
+        log.info("Income report requested via voice: userId={}", userId);
         // TODO: Implement income report logic
     }
 
-    private void handleGetFinancialStats(DMDecisionEvent decision) {
+    private void handleGetFinancialStats(String userId) {
         // Financial statistics overview
-        log.info("Financial stats requested via voice: userId={}", decision.getUserId());
+        log.info("Financial stats requested via voice: userId={}", userId);
         // TODO: Implement comprehensive financial statistics
     }
 
-    private void handleGetCategorySpending(DMDecisionEvent decision) {
-        String category = decision.getParameters().get("category");
+    private void handleGetCategorySpending(String userId, Map<String,String> parameters) {
+        String category = parameters.get("category");
         
         try {
             LocalDate to = LocalDate.now();
             LocalDate from = to.minusMonths(1); // Last month
             
-            var categorySpending = moneyService.getCategorySpending(decision.getUserId(), from, to);
+            var categorySpending = moneyService.getCategorySpending(userId, from, to);
             log.info("Category spending retrieved via voice: userId={}, categories={}", 
-                    decision.getUserId(), categorySpending.size());
+                    userId, categorySpending.size());
 
             // TODO: Send category breakdown to TTS for voice response
             
         } catch (Exception e) {
-            log.error("Failed to get category spending via voice: userId={}", decision.getUserId(), e);
+            log.error("Failed to get category spending via voice: userId={}", userId, e);
         }
     }
 }
