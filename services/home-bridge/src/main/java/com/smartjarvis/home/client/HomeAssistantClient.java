@@ -57,7 +57,7 @@ public class HomeAssistantClient {
                     .uri("/api/services/{domain}/{service}", domain, service)
                     .bodyValue(requestBody)
                     .retrieve()
-                    .onStatus(HttpStatus::isError, clientResponse -> {
+                    .onStatus(status -> status.isError(), clientResponse -> {
                         return clientResponse.bodyToMono(String.class)
                                 .flatMap(errorBody -> Mono.error(
                                     new HomeControlException("HA API error: " + errorBody)));
@@ -84,7 +84,7 @@ public class HomeAssistantClient {
             Map<String, Object> state = webClient.get()
                     .uri("/api/states/{entity_id}", entityId)
                     .retrieve()
-                    .onStatus(HttpStatus::isError, clientResponse -> {
+                    .onStatus(status -> status.isError(), clientResponse -> {
                         return Mono.error(new HomeControlException("Entity not found: " + entityId));
                     })
                     .bodyToMono(Map.class)
