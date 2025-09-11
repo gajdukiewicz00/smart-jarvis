@@ -1,8 +1,5 @@
 package com.smartjarvis.gateway.websocket;
 
-import com.smartjarvis.events.AudioIncomingEvent;
-import com.smartjarvis.events.WebSocketConnectionEvent;
-import com.smartjarvis.events.ConnectionEventType;
 import com.smartjarvis.gateway.metrics.VoiceGatewayMetrics;
 import com.smartjarvis.gateway.service.VoiceActivityDetector;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +15,7 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -60,15 +58,14 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
         metrics.incrementConnections();
         metrics.setActiveConnections(activeSessions.size());
         
-        // Publish connection event
-        WebSocketConnectionEvent event = WebSocketConnectionEvent.newBuilder()
-            .setSessionId(sessionId)
-            .setUserId(userId)
-            .setEventType(ConnectionEventType.CONNECTED)
-            .setTimestamp(Instant.now().toEpochMilli())
-            .setClientInfo(session.getHandshakeHeaders().getFirst("User-Agent"))
-            .build();
-            
+        // Publish connection event (JSON)
+        Map<String, Object> event = Map.of(
+            "sessionId", sessionId,
+            "userId", userId,
+            "eventType", "CONNECTED",
+            "timestamp", Instant.now().toEpochMilli(),
+            "clientInfo", session.getHandshakeHeaders().getFirst("User-Agent")
+        );
         kafkaTemplate.send(CONNECTION_TOPIC, sessionId, event);
         
         // Send welcome message
@@ -89,15 +86,14 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
         // Update metrics
         metrics.setActiveConnections(activeSessions.size());
         
-        // Publish disconnection event
-        WebSocketConnectionEvent event = WebSocketConnectionEvent.newBuilder()
-            .setSessionId(sessionId)
-            .setUserId(userId)
-            .setEventType(ConnectionEventType.DISCONNECTED)
-            .setTimestamp(Instant.now().toEpochMilli())
-            .setClientInfo(status.toString())
-            .build();
-            
+        // Publish disconnection event (JSON)
+        Map<String, Object> event = Map.of(
+            "sessionId", sessionId,
+            "userId", userId,
+            "eventType", "DISCONNECTED",
+            "timestamp", Instant.now().toEpochMilli(),
+            "clientInfo", status.toString()
+        );
         kafkaTemplate.send(CONNECTION_TOPIC, sessionId, event);
     }
 
@@ -127,17 +123,16 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
             }
             
             // Always process audio for STT (even during barge-in)
-            AudioIncomingEvent event = AudioIncomingEvent.newBuilder()
-                .setSessionId(sessionId)
-                .setUserId(userId != null ? userId : "anonymous")
-                .setAudioData(ByteBuffer.wrap(audioData))
-                .setTimestamp(Instant.now().toEpochMilli())
-                .setFormat("pcm_16khz")
-                .setDuration(calculateAudioDuration(audioData.length))
-                .build();
-            
+            Map<String, Object> audioEvent = Map.of(
+                "sessionId", sessionId,
+                "userId", userId != null ? userId : "anonymous",
+                "audioData", audioData,
+                "timestamp", Instant.now().toEpochMilli(),
+                "format", "pcm_16khz",
+                "duration", calculateAudioDuration(audioData.length)
+            );
             // Publish to Kafka
-            kafkaTemplate.send(AUDIO_TOPIC, sessionId, event);
+            kafkaTemplate.send(AUDIO_TOPIC, sessionId, audioEvent);
             
             // Update metrics
             metrics.incrementAudioMessages();
@@ -218,14 +213,13 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
 
     private void publishErrorEvent(String sessionId, String userId, String errorMessage) {
         try {
-            WebSocketConnectionEvent event = WebSocketConnectionEvent.newBuilder()
-                .setSessionId(sessionId)
-                .setUserId(userId)
-                .setEventType(ConnectionEventType.ERROR)
-                .setTimestamp(Instant.now().toEpochMilli())
-                .setErrorMessage(errorMessage)
-                .build();
-                
+            Map<String, Object> event = Map.of(
+                "sessionId", sessionId,
+                "userId", userId,
+                "eventType", "ERROR",
+                "timestamp", Instant.now().toEpochMilli(),
+                "errorMessage", errorMessage
+            );
             kafkaTemplate.send(CONNECTION_TOPIC, sessionId, event);
         } catch (Exception e) {
             log.error("Failed to publish error event: sessionId={}", sessionId, e);
