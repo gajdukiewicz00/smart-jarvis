@@ -439,6 +439,7 @@ services:
 
   # Voice Gateway Service
   voice-gateway:
+    container_name: smartjarvis-voice-gateway-v2
     build:
       context: ../../services/voice-gateway
       dockerfile: Dockerfile
