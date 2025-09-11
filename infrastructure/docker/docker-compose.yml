@@ -453,9 +453,9 @@ services:
       - POSTGRES_URL=jdbc:postgresql://postgres:5432/smartjarvis
       - POSTGRES_USERNAME=jarvis
       - POSTGRES_PASSWORD=secret
-      - SPRING_DATA_REDIS_HOST=redis
-      - SPRING_DATA_REDIS_PORT=6379
-      - SPRING_DATA_REDIS_PASSWORD=secret
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=secret
       - JAEGER_ENDPOINT=http://jaeger:14250
     depends_on:
       kafka:
