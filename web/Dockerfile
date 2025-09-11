@@ -4,8 +4,8 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package.json ./
+RUN npm install --no-audit --no-fund --prefer-offline
 
 # Copy source code
 COPY . .
