@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { ServiceStatus } from '../types/service'
 
 const SERVICES = [
-  { name: 'voice-gateway', displayName: 'Voice Gateway', port: 8080, path: '/api/v1/health' },
-  { name: 'stt-service', displayName: 'STT Service', port: 8082, path: '/health' },
-  { name: 'nlu-service', displayName: 'NLU Service', port: 8083, path: '/actuator/health' },
-  { name: 'dm-service', displayName: 'DM Service', port: 8084, path: '/actuator/health' },
-  { name: 'tts-service', displayName: 'TTS Service', port: 8085, path: '/health' },
-  { name: 'todo-service', displayName: 'Todo Service', port: 8086, path: '/actuator/health' },
-  { name: 'device-agent', displayName: 'Device Agent', port: 8087, path: '/actuator/health' },
-  { name: 'home-bridge', displayName: 'Home Bridge', port: 8088, path: '/actuator/health' }
+  { name: 'voice-gateway', displayName: 'Voice Gateway', url: '/svc/voice-gateway' },
+  { name: 'stt-service', displayName: 'STT Service', url: '/svc/stt-service' },
+  { name: 'nlu-service', displayName: 'NLU Service', url: '/svc/nlu-service' },
+  { name: 'dm-service', displayName: 'DM Service', url: '/svc/dm-service' },
+  { name: 'tts-service', displayName: 'TTS Service', url: '/svc/tts-service' },
+  { name: 'todo-service', displayName: 'Todo Service', url: '/svc/todo-service' },
+  { name: 'device-agent', displayName: 'Device Agent', url: '/svc/device-agent' },
+  { name: 'home-bridge', displayName: 'Home Bridge', url: '/svc/home-bridge' }
 ]
 
 export const useServiceStatus = () => {
@@ -26,7 +26,7 @@ export const useServiceStatus = () => {
     const startTime = Date.now()
     
     try {
-      const response = await fetch(`http://localhost:${service.port}${service.path}`, {
+      const response = await fetch(service.url, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
