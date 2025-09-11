@@ -34,7 +34,8 @@ public class NLUIntentListener {
             String userId = (String) payload.get("userId");
             String intent = (String) payload.get("intent");
             Double confidence = payload.get("confidence") instanceof Number ? ((Number) payload.get("confidence")).doubleValue() : null;
-            Object entities = payload.get("entities");
+            @SuppressWarnings("unchecked")
+            Map<String, String> entities = (Map<String, String>) payload.get("entities");
 
             log.info("Processing intent: sessionId={}, intent={}, confidence={}", sessionId, intent, confidence);
 
