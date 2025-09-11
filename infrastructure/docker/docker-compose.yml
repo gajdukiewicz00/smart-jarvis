@@ -439,12 +439,11 @@ services:
 
   # Voice Gateway Service
   voice-gateway:
-    container_name: smartjarvis-voice-gateway-v2
+    container_name: smartjarvis-voice-gateway-2
     build:
       context: ../../services/voice-gateway
       dockerfile: Dockerfile
     hostname: voice-gateway
-    container_name: smartjarvis-voice-gateway
     ports:
       - "8090:8080"
     environment:
