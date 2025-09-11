@@ -89,6 +89,8 @@ public class RuleBasedNLU {
             case "home_light_control" -> extractHomeLightEntities(text, entities);
             case "home_media_control" -> extractHomeMediaEntities(text, entities);
             case "home_scene" -> extractSceneEntities(text, entities);
+            case "money_expense", "money_income" -> extractMoneyTransactionEntities(text, entities);
+            case "money_expense_report", "money_income_report", "money_category_spending" -> extractMoneyReportEntities(text, entities);
         }
 
         return entities;
@@ -310,6 +312,42 @@ public class RuleBasedNLU {
             new IntentInfo("device_media", 0.85f)
         );
 
+        // Money/Finance commands
+        patterns.put(
+            Pattern.compile("(?i).*(потратил|трата|расход|купил|заплатил)\\s+(\\d+).*(?:рубл|руб|₽).*(?:на|за)\\s+(.+)"),
+            new IntentInfo("money_expense", 0.90f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(получил|доход|зарплата|премия|заработал)\\s+(\\d+).*(?:рубл|руб|₽).*"),
+            new IntentInfo("money_income", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(сколько потратил|расходы|трат).*(?:за|в)\\s+(месяц|неделю|день|сегодня).*"),
+            new IntentInfo("money_expense_report", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(сколько заработал|доходы|доход).*(?:за|в)\\s+(месяц|неделю|день|сегодня).*"),
+            new IntentInfo("money_income_report", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(баланс|сколько денег|остаток|сальдо).*"),
+            new IntentInfo("money_balance", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(статистика|отчет|аналитика).*(?:финанс|денег|трат).*"),
+            new IntentInfo("money_stats", 0.80f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(по категори).*(?:трат|расход).*"),
+            new IntentInfo("money_category_spending", 0.80f)
+        );
+
         // System commands
         patterns.put(
             Pattern.compile("(?i).*(стоп|остановись|хватит|отмена).*"),
@@ -513,6 +551,102 @@ public class RuleBasedNLU {
             case "кабинет" -> "кабинет";
             default -> room;
         };
+    }
+
+    /**
+     * Extract money transaction entities
+     */
+    private void extractMoneyTransactionEntities(String text, Map<String, String> entities) {
+        // Extract amount
+        Pattern amountPattern = Pattern.compile("(\\d+(?:[.,]\\d{1,2})?)\\s*(?:рубл|руб|₽)");
+        Matcher amountMatcher = amountPattern.matcher(text);
+        if (amountMatcher.find()) {
+            String amount = amountMatcher.group(1).replace(",", ".");
+            entities.put("amount", amount);
+        }
+
+        // Extract description/category from expense
+        Pattern expenseDescPattern = Pattern.compile("(?:потратил|купил|заплатил|трата|расход).*(?:на|за)\\s+(.+?)(?:\\s+\\d+|$)");
+        Matcher expenseDescMatcher = expenseDescPattern.matcher(text);
+        if (expenseDescMatcher.find()) {
+            String description = expenseDescMatcher.group(1).trim();
+            entities.put("description", description);
+            
+            // Try to map to category
+            String category = mapDescriptionToCategory(description);
+            if (category != null) {
+                entities.put("category", category);
+            }
+        }
+
+        // Extract description from income
+        Pattern incomeDescPattern = Pattern.compile("(?:получил|доход|зарплата|премия|заработал).*(?:от|за)\\s+(.+?)(?:\\s+\\d+|$)");
+        Matcher incomeDescMatcher = incomeDescPattern.matcher(text);
+        if (incomeDescMatcher.find()) {
+            String description = incomeDescMatcher.group(1).trim();
+            entities.put("description", description);
+        }
+
+        // Extract payment method
+        if (text.contains("картой") || text.contains("карта")) {
+            entities.put("payment_method", "CARD");
+        } else if (text.contains("наличными") || text.contains("наличные")) {
+            entities.put("payment_method", "CASH");
+        } else if (text.contains("переводом") || text.contains("перевод")) {
+            entities.put("payment_method", "TRANSFER");
+        }
+    }
+
+    /**
+     * Extract money report entities
+     */
+    private void extractMoneyReportEntities(String text, Map<String, String> entities) {
+        // Extract time period
+        if (text.contains("сегодня")) {
+            entities.put("period", "today");
+        } else if (text.contains("вчера")) {
+            entities.put("period", "yesterday");
+        } else if (text.contains("неделю")) {
+            entities.put("period", "week");
+        } else if (text.contains("месяц")) {
+            entities.put("period", "month");
+        } else if (text.contains("год")) {
+            entities.put("period", "year");
+        }
+
+        // Extract specific category if mentioned
+        Pattern categoryPattern = Pattern.compile("(?:по категории|категория)\\s+(\\w+)");
+        Matcher categoryMatcher = categoryPattern.matcher(text);
+        if (categoryMatcher.find()) {
+            entities.put("category", categoryMatcher.group(1));
+        }
+    }
+
+    /**
+     * Map description to category (simplified)
+     */
+    private String mapDescriptionToCategory(String description) {
+        String lowerDesc = description.toLowerCase();
+        
+        if (lowerDesc.contains("еда") || lowerDesc.contains("обед") || lowerDesc.contains("ужин") || 
+            lowerDesc.contains("завтрак") || lowerDesc.contains("кафе") || lowerDesc.contains("ресторан")) {
+            return "Еда";
+        } else if (lowerDesc.contains("такси") || lowerDesc.contains("автобус") || lowerDesc.contains("метро") ||
+                  lowerDesc.contains("бензин") || lowerDesc.contains("транспорт")) {
+            return "Транспорт";
+        } else if (lowerDesc.contains("кино") || lowerDesc.contains("театр") || lowerDesc.contains("концерт") ||
+                  lowerDesc.contains("игра") || lowerDesc.contains("развлечение")) {
+            return "Развлечения";
+        } else if (lowerDesc.contains("одежда") || lowerDesc.contains("обувь") || lowerDesc.contains("покупка")) {
+            return "Покупки";
+        } else if (lowerDesc.contains("свет") || lowerDesc.contains("газ") || lowerDesc.contains("вода") ||
+                  lowerDesc.contains("интернет") || lowerDesc.contains("коммунальн")) {
+            return "Коммунальные";
+        } else if (lowerDesc.contains("врач") || lowerDesc.contains("лекарств") || lowerDesc.contains("больниц")) {
+            return "Здоровье";
+        }
+        
+        return null; // Use "Прочее" as default
     }
 
     /**

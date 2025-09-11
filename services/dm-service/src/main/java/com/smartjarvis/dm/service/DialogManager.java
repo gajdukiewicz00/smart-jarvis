@@ -215,6 +215,56 @@ public class DialogManager {
             .requiresConfirmation(false)
             .build());
 
+        // Money/Finance commands
+        map.put("money_expense", ResponseAction.builder()
+            .action("add_expense")
+            .targetService("money-service")
+            .responseText("Записываю расход")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("money_income", ResponseAction.builder()
+            .action("add_income")
+            .targetService("money-service")
+            .responseText("Записываю доход")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("money_balance", ResponseAction.builder()
+            .action("get_balance")
+            .targetService("money-service")
+            .responseText("Проверяю баланс")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("money_expense_report", ResponseAction.builder()
+            .action("get_expense_report")
+            .targetService("money-service")
+            .responseText("Формирую отчет по расходам")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("money_income_report", ResponseAction.builder()
+            .action("get_income_report")
+            .targetService("money-service")
+            .responseText("Формирую отчет по доходам")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("money_stats", ResponseAction.builder()
+            .action("get_financial_stats")
+            .targetService("money-service")
+            .responseText("Показываю финансовую статистику")
+            .requiresConfirmation(false)
+            .build());
+            
+        map.put("money_category_spending", ResponseAction.builder()
+            .action("get_category_spending")
+            .targetService("money-service")
+            .responseText("Показываю расходы по категориям")
+            .requiresConfirmation(false)
+            .build());
+
         // Stop command
         map.put("stop", ResponseAction.builder()
             .action("stop_all")
