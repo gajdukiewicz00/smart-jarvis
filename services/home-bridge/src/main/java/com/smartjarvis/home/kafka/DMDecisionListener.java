@@ -1,6 +1,6 @@
 package com.smartjarvis.home.kafka;
 
-import com.smartjarvis.events.DMDecisionEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartjarvis.home.model.HomeCommandResult;
 import com.smartjarvis.home.service.HomeAssistantService;
 import lombok.RequiredArgsConstructor;
@@ -22,41 +22,46 @@ public class DMDecisionListener {
 
     private final HomeAssistantService homeService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @KafkaListener(topics = "dm.decision", groupId = "home-bridge")
-    public void handleDecision(DMDecisionEvent decisionEvent) {
+    public void handleDecision(String message) {
         try {
+            Map<?,?> decisionEvent = objectMapper.readValue(message, Map.class);
             // Only process decisions for home-bridge
-            if (!"home-bridge".equals(decisionEvent.getTargetService())) {
+            if (!"home-bridge".equals(decisionEvent.get("targetService"))) {
                 return;
             }
 
-            log.info("Processing home decision: sessionId={}, action={}", 
-                    decisionEvent.getSessionId(), decisionEvent.getAction());
+            String sessionId = (String) decisionEvent.get("sessionId");
+            String action = (String) decisionEvent.get("action");
+            @SuppressWarnings("unchecked")
+            Map<String,String> parameters = (Map<String,String>) decisionEvent.get("parameters");
 
-            HomeCommandResult result = switch (decisionEvent.getAction()) {
-                case "control_light" -> handleLightControl(decisionEvent);
-                case "control_media" -> handleMediaControl(decisionEvent);
-                case "activate_scene" -> handleSceneActivation(decisionEvent);
+            log.info("Processing home decision: sessionId={}, action={}", sessionId, action);
+
+            HomeCommandResult result = switch (action) {
+                case "control_light" -> handleLightControl(parameters);
+                case "control_media" -> handleMediaControl(parameters);
+                case "activate_scene" -> handleSceneActivation(parameters);
                 default -> {
-                    log.warn("Unknown home action: {}", decisionEvent.getAction());
+                    log.warn("Unknown home action: {}", action);
                     yield HomeCommandResult.builder()
                             .success(false)
-                            .errorMessage("Unknown action: " + decisionEvent.getAction())
+                            .errorMessage("Unknown action: " + action)
                             .timestamp(System.currentTimeMillis())
                             .build();
                 }
             };
 
             // Publish result back
-            publishHomeResult(decisionEvent, result);
+            publishHomeResult(sessionId, result);
 
         } catch (Exception e) {
-            log.error("Failed to process home decision: sessionId={}", 
-                    decisionEvent.getSessionId(), e);
+            log.error("Failed to process home decision message", e);
             
             // Publish error result
-            publishHomeResult(decisionEvent, HomeCommandResult.builder()
+            publishHomeResult(null, HomeCommandResult.builder()
                     .success(false)
                     .errorMessage(e.getMessage())
                     .timestamp(System.currentTimeMillis())
@@ -64,10 +69,10 @@ public class DMDecisionListener {
         }
     }
 
-    private HomeCommandResult handleLightControl(DMDecisionEvent decision) {
-        String room = decision.getParameters().get("location");
-        String action = decision.getParameters().get("device_action");
-        String brightnessStr = decision.getParameters().get("brightness");
+    private HomeCommandResult handleLightControl(Map<String,String> parameters) {
+        String room = parameters.get("location");
+        String action = parameters.get("device_action");
+        String brightnessStr = parameters.get("brightness");
         
         if (room == null) {
             room = "гостиная"; // Default room
@@ -90,10 +95,10 @@ public class DMDecisionListener {
         return homeService.controlLight(room, action, params);
     }
 
-    private HomeCommandResult handleMediaControl(DMDecisionEvent decision) {
-        String room = decision.getParameters().get("location");
-        String action = decision.getParameters().get("media_action");
-        String volumeStr = decision.getParameters().get("volume_level");
+    private HomeCommandResult handleMediaControl(Map<String,String> parameters) {
+        String room = parameters.get("location");
+        String action = parameters.get("media_action");
+        String volumeStr = parameters.get("volume_level");
         
         if (room == null) {
             room = "гостиная"; // Default room
@@ -116,11 +121,11 @@ public class DMDecisionListener {
         return homeService.controlMediaPlayer(room, action, params);
     }
 
-    private HomeCommandResult handleSceneActivation(DMDecisionEvent decision) {
-        String sceneName = decision.getParameters().get("scene_name");
+    private HomeCommandResult handleSceneActivation(Map<String,String> parameters) {
+        String sceneName = parameters.get("scene_name");
         
         if (sceneName == null) {
-            sceneName = decision.getParameters().get("scene");
+            sceneName = parameters.get("scene");
         }
         
         if (sceneName == null) {
@@ -130,17 +135,16 @@ public class DMDecisionListener {
         return homeService.activateScene(sceneName);
     }
 
-    private void publishHomeResult(DMDecisionEvent originalDecision, HomeCommandResult result) {
+    private void publishHomeResult(String sessionId, HomeCommandResult result) {
         try {
             // Create home result event (simplified)
-            kafkaTemplate.send("home.result", originalDecision.getSessionId(), result);
+            kafkaTemplate.send("home.result", sessionId, result);
             
             log.info("Home result published: sessionId={}, success={}", 
-                    originalDecision.getSessionId(), result.isSuccess());
+                    sessionId, result.isSuccess());
                     
         } catch (Exception e) {
-            log.error("Failed to publish home result: sessionId={}", 
-                    originalDecision.getSessionId(), e);
+            log.error("Failed to publish home result: sessionId={}", sessionId, e);
         }
     }
 }
