@@ -1,5 +1,5 @@
 # Multi-stage build for Device Agent
-FROM maven:3.9-openjdk-21-slim AS build
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 # Runtime stage
-FROM openjdk:21-jre-slim
+FROM eclipse-temurin:21-jre
 
 # Install system tools needed for device control
 RUN apt-get update && apt-get install -y \
