@@ -1,6 +1,6 @@
 package com.smartjarvis.todo.kafka;
 
-import com.smartjarvis.events.DMDecisionEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartjarvis.todo.dto.CreateTodoRequest;
 import com.smartjarvis.todo.service.TodoService;
 import lombok.RequiredArgsConstructor;
@@ -9,8 +9,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import java.util.Map;
 
 /**
  * Kafka listener for DM decision events
@@ -22,53 +21,59 @@ import java.time.format.DateTimeParseException;
 public class DMDecisionListener {
 
     private final TodoService todoService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @KafkaListener(topics = "dm.decision", groupId = "todo-service")
-    public void handleDecision(DMDecisionEvent decisionEvent) {
+    public void handleDecision(String message) {
         try {
+            Map<?,?> decisionEvent = objectMapper.readValue(message, Map.class);
             // Only process decisions for todo-service
-            if (!"todo-service".equals(decisionEvent.getTargetService())) {
+            if (!"todo-service".equals(decisionEvent.get("targetService"))) {
                 return;
             }
 
-            log.info("Processing todo decision: sessionId={}, action={}", 
-                    decisionEvent.getSessionId(), decisionEvent.getAction());
+            String sessionId = (String) decisionEvent.get("sessionId");
+            String userId = (String) decisionEvent.get("userId");
+            String action = (String) decisionEvent.get("action");
+            @SuppressWarnings("unchecked")
+            Map<String,String> parameters = (Map<String,String>) decisionEvent.get("parameters");
 
-            switch (decisionEvent.getAction()) {
-                case "create_task" -> handleCreateTask(decisionEvent);
-                case "list_tasks" -> handleListTasks(decisionEvent);
-                case "complete_task" -> handleCompleteTask(decisionEvent);
-                default -> log.warn("Unknown todo action: {}", decisionEvent.getAction());
+            log.info("Processing todo decision: sessionId={}, action={}", sessionId, action);
+
+            switch (action) {
+                case "create_task" -> handleCreateTask(userId, sessionId, parameters);
+                case "list_tasks" -> handleListTasks(userId, sessionId);
+                case "complete_task" -> handleCompleteTask(userId, sessionId, parameters);
+                default -> log.warn("Unknown todo action: {}", action);
             }
 
         } catch (Exception e) {
-            log.error("Failed to process todo decision: sessionId={}", 
-                    decisionEvent.getSessionId(), e);
+            log.error("Failed to process todo decision message", e);
         }
     }
 
     /**
      * Handle task creation
      */
-    private void handleCreateTask(DMDecisionEvent decision) {
-        String title = decision.getParameters().get("title");
+    private void handleCreateTask(String userId, String sessionId, Map<String,String> parameters) {
+        String title = parameters.get("title");
         if (title == null || title.trim().isEmpty()) {
-            title = decision.getParameters().get("task");
+            title = parameters.get("task");
         }
         
         if (title == null || title.trim().isEmpty()) {
-            log.warn("No task title provided in decision: sessionId={}", decision.getSessionId());
+            log.warn("No task title provided in decision: sessionId={}", sessionId);
             return;
         }
 
         CreateTodoRequest request = new CreateTodoRequest();
-        request.setUserId(decision.getUserId());
+        request.setUserId(userId);
         request.setTitle(title.trim());
         request.setDescription("Создано голосовой командой");
 
         // Parse due date if provided
-        String dueDateStr = decision.getParameters().get("due_date");
-        String dueTimeStr = decision.getParameters().get("due_time");
+        String dueDateStr = parameters.get("due_date");
+        String dueTimeStr = parameters.get("due_time");
         
         if (dueDateStr != null || dueTimeStr != null) {
             LocalDateTime dueDate = parseDueDateTime(dueDateStr, dueTimeStr);
@@ -78,7 +83,7 @@ public class DMDecisionListener {
         try {
             todoService.createTodo(request);
             log.info("Task created via voice command: title='{}', userId='{}'", 
-                    title, decision.getUserId());
+                    title, userId);
         } catch (Exception e) {
             log.error("Failed to create task via voice command: title='{}'", title, e);
         }
@@ -87,33 +92,33 @@ public class DMDecisionListener {
     /**
      * Handle task listing
      */
-    private void handleListTasks(DMDecisionEvent decision) {
+    private void handleListTasks(String userId, String sessionId) {
         try {
-            var todos = todoService.getPendingTodos(decision.getUserId());
+            var todos = todoService.getPendingTodos(userId);
             log.info("Listed {} pending tasks for user: '{}'", 
-                    todos.size(), decision.getUserId());
+                    todos.size(), userId);
             
             // TODO: Send response back through TTS
             
         } catch (Exception e) {
-            log.error("Failed to list tasks for user: '{}'", decision.getUserId(), e);
+            log.error("Failed to list tasks for user: '{}'", userId, e);
         }
     }
 
     /**
      * Handle task completion
      */
-    private void handleCompleteTask(DMDecisionEvent decision) {
-        String taskIdStr = decision.getParameters().get("task_id");
+    private void handleCompleteTask(String userId, String sessionId, Map<String,String> parameters) {
+        String taskIdStr = parameters.get("task_id");
         if (taskIdStr == null) {
-            log.warn("No task ID provided for completion: sessionId={}", decision.getSessionId());
+            log.warn("No task ID provided for completion: sessionId={}", sessionId);
             return;
         }
 
         try {
-            todoService.markCompleted(taskIdStr, decision.getUserId());
+            todoService.markCompleted(taskIdStr, userId);
             log.info("Task completed via voice command: id='{}', userId='{}'", 
-                    taskIdStr, decision.getUserId());
+                    taskIdStr, userId);
         } catch (Exception e) {
             log.error("Failed to complete task via voice command: id='{}'", taskIdStr, e);
         }
