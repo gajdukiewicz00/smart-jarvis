@@ -1,13 +1,14 @@
 package com.smartjarvis.device.kafka;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartjarvis.device.model.CommandResult;
 import com.smartjarvis.device.service.LinuxDeviceService;
-import com.smartjarvis.events.DMDecisionEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import java.util.Map;
 
 /**
  * Kafka listener for DM decision events
@@ -20,44 +21,49 @@ public class DMDecisionListener {
 
     private final LinuxDeviceService deviceService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @KafkaListener(topics = "dm.decision", groupId = "device-agent")
-    public void handleDecision(DMDecisionEvent decisionEvent) {
+    public void handleDecision(String message) {
         try {
+            Map<?,?> decisionEvent = objectMapper.readValue(message, Map.class);
             // Only process decisions for device-agent
-            if (!"device-agent".equals(decisionEvent.getTargetService())) {
+            if (!"device-agent".equals(decisionEvent.get("targetService"))) {
                 return;
             }
 
-            log.info("Processing device decision: sessionId={}, action={}", 
-                    decisionEvent.getSessionId(), decisionEvent.getAction());
+            String sessionId = (String) decisionEvent.get("sessionId");
+            String action = (String) decisionEvent.get("action");
+            @SuppressWarnings("unchecked")
+            Map<String,String> parameters = (Map<String,String>) decisionEvent.get("parameters");
+            
+            log.info("Processing device decision: sessionId={}, action={}", sessionId, action);
 
-            CommandResult result = switch (decisionEvent.getAction()) {
-                case "set_volume" -> handleVolumeControl(decisionEvent);
-                case "media_control" -> handleMediaControl(decisionEvent);
-                case "open_app" -> handleOpenApplication(decisionEvent);
-                case "open_url" -> handleOpenUrl(decisionEvent);
-                case "take_screenshot" -> handleTakeScreenshot(decisionEvent);
-                case "lock_screen" -> handleLockScreen(decisionEvent);
+            CommandResult result = switch (action) {
+                case "set_volume" -> handleVolumeControl(parameters);
+                case "media_control" -> handleMediaControl(parameters);
+                case "open_app" -> handleOpenApplication(parameters);
+                case "open_url" -> handleOpenUrl(parameters);
+                case "take_screenshot" -> handleTakeScreenshot();
+                case "lock_screen" -> handleLockScreen();
                 default -> {
-                    log.warn("Unknown device action: {}", decisionEvent.getAction());
+                    log.warn("Unknown device action: {}", action);
                     yield CommandResult.builder()
                             .success(false)
-                            .errorMessage("Unknown action: " + decisionEvent.getAction())
+                            .errorMessage("Unknown action: " + action)
                             .timestamp(System.currentTimeMillis())
                             .build();
                 }
             };
 
             // Publish result back
-            publishDeviceResult(decisionEvent, result);
+            publishDeviceResult(sessionId, result);
 
         } catch (Exception e) {
-            log.error("Failed to process device decision: sessionId={}", 
-                    decisionEvent.getSessionId(), e);
+            log.error("Failed to process device decision message", e);
             
             // Publish error result
-            publishDeviceResult(decisionEvent, CommandResult.builder()
+            publishDeviceResult(null, CommandResult.builder()
                     .success(false)
                     .errorMessage(e.getMessage())
                     .timestamp(System.currentTimeMillis())
@@ -65,9 +71,9 @@ public class DMDecisionListener {
         }
     }
 
-    private CommandResult handleVolumeControl(DMDecisionEvent decision) {
-        String volumeStr = decision.getParameters().get("volume");
-        String action = decision.getParameters().get("volume_action");
+    private CommandResult handleVolumeControl(Map<String,String> parameters) {
+        String volumeStr = parameters.get("volume");
+        String action = parameters.get("volume_action");
         
         try {
             if (volumeStr != null) {
@@ -87,8 +93,8 @@ public class DMDecisionListener {
         }
     }
 
-    private CommandResult handleMediaControl(DMDecisionEvent decision) {
-        String action = decision.getParameters().get("media_action");
+    private CommandResult handleMediaControl(Map<String,String> parameters) {
+        String action = parameters.get("media_action");
         if (action == null) {
             action = "play-pause"; // Default action
         }
@@ -96,8 +102,8 @@ public class DMDecisionListener {
         return deviceService.mediaControl(action);
     }
 
-    private CommandResult handleOpenApplication(DMDecisionEvent decision) {
-        String appName = decision.getParameters().get("app_name");
+    private CommandResult handleOpenApplication(Map<String,String> parameters) {
+        String appName = parameters.get("app_name");
         if (appName == null) {
             throw new IllegalArgumentException("App name not provided");
         }
@@ -105,8 +111,8 @@ public class DMDecisionListener {
         return deviceService.openApplication(appName);
     }
 
-    private CommandResult handleOpenUrl(DMDecisionEvent decision) {
-        String url = decision.getParameters().get("url");
+    private CommandResult handleOpenUrl(Map<String,String> parameters) {
+        String url = parameters.get("url");
         if (url == null) {
             throw new IllegalArgumentException("URL not provided");
         }
@@ -114,25 +120,24 @@ public class DMDecisionListener {
         return deviceService.openUrl(url);
     }
 
-    private CommandResult handleTakeScreenshot(DMDecisionEvent decision) {
+    private CommandResult handleTakeScreenshot() {
         return deviceService.takeScreenshot();
     }
 
-    private CommandResult handleLockScreen(DMDecisionEvent decision) {
+    private CommandResult handleLockScreen() {
         return deviceService.lockScreen();
     }
 
-    private void publishDeviceResult(DMDecisionEvent originalDecision, CommandResult result) {
+    private void publishDeviceResult(String sessionId, CommandResult result) {
         try {
             // Create device result event (simplified)
-            kafkaTemplate.send("device.result", originalDecision.getSessionId(), result);
+            kafkaTemplate.send("device.result", sessionId, result);
             
             log.info("Device result published: sessionId={}, success={}", 
-                    originalDecision.getSessionId(), result.isSuccess());
+                    sessionId, result.isSuccess());
                     
         } catch (Exception e) {
-            log.error("Failed to publish device result: sessionId={}", 
-                    originalDecision.getSessionId(), e);
+            log.error("Failed to publish device result: sessionId={}", sessionId, e);
         }
     }
 }
