@@ -361,3 +361,120 @@ make down
 3. **Надежность** — обработка ошибок
 4. **Безопасность** — allowlist и валидация
 5. **UX** — интуитивность и отзывчивость
+
+---
+
+## 🧩 BACKLOG — ПОДРОБНЫЕ ЗАДАЧИ К РЕАЛИЗАЦИИ
+
+> Мелкие, понятные, атомарные задачи. Разбито по эпикам (EP0–EP13 ближайший приоритет).
+
+### EP0. Подготовка проекта
+- [ ] Добавить `.editorconfig` в корень (LF, utf-8, 2/4 spaces; trim_trailing_whitespace)
+- [ ] Добавить `LICENSE` (placeholder; указать, что проект закрытый)
+- [ ] Добавить `CONTRIBUTING.md` (ветвление, коммиты, PR-процесс, ревью чек-лист)
+- [ ] Добавить `CODE_OF_CONDUCT.md` (Contributor Covenant RU)
+- [ ] Добавить `SECURITY.md` (как репортить уязвимости, SLA ответа)
+- [ ] Создать `.env.example` (Kafka, Schema Registry, Postgres, Redis, Mongo, HA, Jaeger)
+- [ ] Добавить политику секретов `docs/security/secrets-policy.md` (что нельзя коммитить, как хранить)
+- [ ] Настроить Java линтинг: Spotless + google-java-format в каждом `pom.xml`
+- [ ] Подключить Checkstyle (правила, failOnViolation=true) в Java сервисах
+- [ ] Настроить ESLint + Prettier в `web/` (scripts: lint, format, fix)
+- [ ] Добавить цели `make lint` и `make format` (агрегация java/web)
+- [ ] Обновить корневой `README.md` (структура монорепо, быстрый старт, ссылки)
+
+### EP1. Локальная инфраструктура
+- [ ] Скрипт `scripts/kafka-init.sh`: создание тем `audio.incoming`, `stt.*`, `nlu.*`, `dm.*`, `tts.*`, `device.*`, `home.*`, `websocket.connection`
+- [ ] Скрипт `scripts/register-schemas.sh`: регистрация `.avsc` в Schema Registry
+- [ ] Добавить `make seed` (вызов init + register-schemas)
+- [ ] Прописать OTEL переменные в сервисах (OTEL_EXPORTER_OTLP_ENDPOINT) и Jaeger endpoint
+- [ ] Добавить Grafana дашборды (gateway, STT latency/WER, NLU intents, DM decisions, Kafka lag)
+- [ ] Проверить/исправить healthchecks всех контейнеров в compose
+- [ ] (Опц.) Добавить MinIO в compose + volumes для артефактов
+
+### EP2. Контракты + общая либра
+- [ ] Упорядочить Avro схемы в `shared/avro-schemas/` (удалить дубли `nlu_intent`/`nlu-intent` и т.п.)
+- [ ] Добавить Maven/Gradle таску генерации Avro-классов (Java)
+- [ ] Подключить генерацию во все Java сервисы (пакет `com.smartjarvis.events`)
+- [ ] Создать модуль `shared/java-common`: CorrelationId фильтр, JSON-логгер, базовые исключения
+- [ ] Подключить `java-common` во все Java сервисы
+- [ ] Добавить CI шаг проверки backward-compatibility Avro (karapace/compat или avro-maven-plugin)
+
+### EP3. Voice-gateway (WS/HTTP, дуплекс)
+- [ ] JWT аутентификация для WS (`Authorization`/`X-User-Id`), валидация токена
+- [ ] Подписка на `tts.outputs` и отправка аудио в WebSocket клиент
+- [ ] Full-duplex: параллельный capture/playback (не блокируя обработку)
+- [ ] Auto-ducking TTS при входящем аудио (регулируемый уровень)
+- [ ] Конфигурируемые пороги VAD/бардж-ин (application.yml)
+- [ ] Стандартизировать WS-сообщения (JSON-schema: ping/status/error/barge_in/tts_start/tts_stop)
+- [ ] Метрики: `gateway_active_sessions`, `audio_messages_total`, `barge_in_total`, `ws_errors_total`
+
+### EP4. STT-service (Whisper + VAD)
+- [ ] Интегрировать Whisper (CT2/ggml), выбор модели через env
+- [ ] Потоковая сегментация 200–500 мс (частичные транскрипты)
+- [ ] Интегрировать VAD (silero/pyannote), фильтровать шум/паузы
+- [ ] Публиковать `stt.partial` и `stt.final` (Avro-сообщения)
+- [ ] Метрики: `stt_latency_seconds`, `stt_throughput_total`, WER (оценка)
+- [ ] Интеграционные тесты c тестовыми аудио (Testcontainers + Kafka)
+
+### EP5. NLU (правила)
+- [ ] Расширить правила RU/PL/EN, покрыть интенты EP5
+- [ ] REST `/api/nlu/parse` с валидацией и метриками
+- [ ] Consumer `stt.final` → producer `nlu.intents`
+- [ ] Тест-корпус и юнит-тесты (>90% точности на простых фразах)
+- [ ] Логирование intent/confidence/entities (без PII)
+
+### EP6. Dialogue Manager
+- [ ] Decision-table intent→action (конфиг YAML/JSON)
+- [ ] REST `/api/dm/decide` + consumer `nlu.intents`
+- [ ] Публикация `dm.decisions` + статусы ошибок
+- [ ] Redis: хранение короткого контекста по sessionId
+- [ ] Метрики: `dm_decisions_total`, `dm_decision_latency_seconds`
+- [ ] Юнит-тесты правил
+
+### EP7. Доменные сервисы (ToDo, Money, Calendar)
+- [ ] Миграции (Flyway/Liquibase) для SQL-компонентов (при наличии)
+- [ ] Индексы Mongo по `userId`/`createdAt` (проверка и создание)
+- [ ] Консьюмеры `todo.commands`, `money.commands`, `calendar.commands`
+- [ ] Интеграционные тесты (Kafka + Mongo, Testcontainers)
+- [ ] OpenAPI документация в каждом сервисе
+
+### EP8. TTS-service (Piper/Edge-TTS + SSML)
+- [ ] Интегрировать Piper/Edge-TTS, конфиг профилей голосов
+- [ ] Поддержать SSML (prosody/break/emphasis)
+- [ ] POST `/api/tts` → публикация в `tts.outputs` (Avro, чанки)
+- [ ] Отмена по barge-in (consumer `voice.bargein`)
+- [ ] Метрики: latency, активные синтезы, отмены
+
+### EP9. Web UI + HUD (v1)
+- [ ] PWA манифест и service worker
+- [ ] Push-to-talk (доступ к микрофону, VAD-индикатор)
+- [ ] WebSocket к gateway, воспроизведение TTS-аудио
+- [ ] HUD: орбиты сервисов, волны речи, статусы Kafka
+- [ ] История команд/ответов (локальное хранение)
+
+### EP10. Device-agent (Linux, v1)
+- [ ] Токенная авторизация клиента/агента
+- [ ] Команды: VOLUME_SET, MEDIA_*, LOCK, APP_OPEN, URL_OPEN, SCREENSHOT
+- [ ] Wayland/DBus/login1 интеграции (ydotool fallback)
+- [ ] Kafka device.commands/events (чтение/публикация)
+- [ ] Документация установки + пример unit для systemd
+
+### EP11. Home-bridge (Home Assistant)
+- [ ] Инструкции по поднятию HA + Zigbee2MQTT в `docs/`
+- [ ] Конфиг маппинга entity/area/scene по человекочитаемым именам
+- [ ] Реализовать мост: light.turn_on, media_player.volume_set, scene.turn_on
+- [ ] State_changed → публикация `home.events`
+
+### EP12. Auth/Policies/Audit
+- [ ] Создать `auth-service` (JWT, роли/разрешения, устройства)
+- [ ] Allowlist команд по устройствам/зонам/времени (DM и device-agent)
+- [ ] Подтверждения опасных команд (голос/кнопка)
+- [ ] `audit-service`: append-only журнал, экспорт
+
+### EP13. CI/CD и безопасность
+- [ ] `.github/workflows/ci.yml`: build, tests, schema check, docker build
+- [ ] Публикация образов в GHCR (semver по тегам)
+- [ ] Trivy скан зависимостей и образов
+- [ ] CodeQL и gitleaks проверки
+- [ ] Кэш Maven/npm/pip в CI
+- [ ] Генерация SBOM (CycloneDX) и загрузка в релиз
