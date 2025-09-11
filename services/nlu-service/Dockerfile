@@ -3,9 +3,8 @@ FROM maven:3.9.6-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
-# Copy pom.xml and shared schemas for dependencies
+# Copy pom.xml and resolve deps
 COPY pom.xml .
-COPY ../../shared/avro-schemas ../../shared/avro-schemas
 RUN mvn dependency:go-offline -B
 
 # Copy source code and build
