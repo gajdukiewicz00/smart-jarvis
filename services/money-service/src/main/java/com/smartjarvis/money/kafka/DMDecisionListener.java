@@ -53,7 +53,7 @@ public class DMDecisionListener {
                 case "get_income_report" -> handleGetIncomeReport(userId, parameters);
                 case "get_financial_stats" -> handleGetFinancialStats(userId);
                 case "get_category_spending" -> handleGetCategorySpending(userId, parameters);
-                default -> log.warn("Unknown money action: {}", decisionEvent.getAction());
+                default -> log.warn("Unknown money action: {}", action);
             }
 
         } catch (Exception e) {
