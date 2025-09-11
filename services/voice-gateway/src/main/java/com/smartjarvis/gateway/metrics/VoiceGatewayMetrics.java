@@ -30,10 +30,10 @@ public class VoiceGatewayMetrics {
             .register(meterRegistry);
 
         this.activeConnections = new AtomicInteger(0);
-        Gauge.builder("voice_gateway_active_connections")
+        Gauge.builder("voice_gateway_active_connections", activeConnections, AtomicInteger::get)
             .description("Current number of active WebSocket connections")
             .tag("service", "voice-gateway")
-            .register(meterRegistry, this, VoiceGatewayMetrics::getActiveConnectionsValue);
+            .register(meterRegistry);
 
         // Audio processing metrics
         this.audioMessagesTotal = Counter.builder("voice_gateway_audio_messages_total")
@@ -72,6 +72,10 @@ public class VoiceGatewayMetrics {
 
     public Timer.Sample startAudioProcessingTimer() {
         return Timer.start();
+    }
+
+    public void stopAudioProcessingTimer(Timer.Sample sample) {
+        sample.stop(audioProcessingTime);
     }
 
     public void incrementErrors() {

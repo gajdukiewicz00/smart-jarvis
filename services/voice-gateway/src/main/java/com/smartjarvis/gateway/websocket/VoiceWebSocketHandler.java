@@ -149,7 +149,7 @@ public class VoiceWebSocketHandler extends AbstractWebSocketHandler {
             publishErrorEvent(sessionId, userId, e.getMessage());
             
         } finally {
-            timer.stop();
+            metrics.stopAudioProcessingTimer(timer);
         }
     }
 
