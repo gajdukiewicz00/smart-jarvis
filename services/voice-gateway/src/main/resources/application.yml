@@ -128,9 +128,7 @@ spring:
     url: jdbc:postgresql://postgres:5432/smartjarvis
   data:
     redis:
-      host: ${REDIS_HOST:redis}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      url: ${REDIS_URL:redis://:secret@redis:6379}
   kafka:
     bootstrap-servers: kafka:29092
     schema-registry:
