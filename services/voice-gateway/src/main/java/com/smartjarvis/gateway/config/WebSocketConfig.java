@@ -19,8 +19,13 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        // Native WebSocket endpoint (used by web UI via Nginx proxy at /voice)
         registry.addHandler(voiceWebSocketHandler, "/voice")
-                .setAllowedOrigins("*") // TODO: configure proper CORS in production
-                .withSockJS(); // Enable SockJS fallback
+                .setAllowedOrigins("*");
+
+        // Optional SockJS fallback endpoint
+        registry.addHandler(voiceWebSocketHandler, "/voice-sockjs")
+                .setAllowedOrigins("*")
+                .withSockJS();
     }
 }
