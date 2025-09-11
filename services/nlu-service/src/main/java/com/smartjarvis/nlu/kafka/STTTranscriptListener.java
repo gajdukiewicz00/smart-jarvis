@@ -1,7 +1,7 @@
 package com.smartjarvis.nlu.kafka;
 
-import com.smartjarvis.events.STTTranscriptEvent;
-import com.smartjarvis.events.NLUIntentEvent;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartjarvis.nlu.model.IntentResult;
 import com.smartjarvis.nlu.service.RuleBasedNLU;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +11,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Kafka listener for STT transcript events
@@ -23,38 +25,39 @@ public class STTTranscriptListener {
 
     private final RuleBasedNLU nluService;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @KafkaListener(topics = "stt.transcript", groupId = "nlu-service")
-    public void handleTranscript(STTTranscriptEvent transcriptEvent) {
+    public void handleTranscript(String message) {
         try {
-            log.info("Processing transcript: sessionId={}, text='{}'", 
-                    transcriptEvent.getSessionId(), transcriptEvent.getTranscript());
+            JsonNode node = objectMapper.readTree(message);
+            String sessionId = node.path("sessionId").asText(null);
+            String userId = node.path("userId").asText(null);
+            String transcript = node.path("transcript").asText(null);
+
+            log.info("Processing transcript: sessionId={}, text='{}'", sessionId, transcript);
 
             // Extract intent from transcript
-            IntentResult intentResult = nluService.extractIntent(transcriptEvent.getTranscript());
+            IntentResult intentResult = nluService.extractIntent(transcript);
 
-            // Create NLU intent event
-            NLUIntentEvent intentEvent = NLUIntentEvent.newBuilder()
-                    .setSessionId(transcriptEvent.getSessionId())
-                    .setUserId(transcriptEvent.getUserId())
-                    .setIntent(intentResult.getIntent())
-                    .setConfidence(intentResult.getConfidence())
-                    .setEntities(intentResult.getEntities())
-                    .setOriginalText(transcriptEvent.getTranscript())
-                    .setTimestamp(Instant.now().toEpochMilli())
-                    .build();
+            // Build generic intent payload (JSON)
+            Map<String, Object> intentEvent = new HashMap<>();
+            intentEvent.put("sessionId", sessionId);
+            intentEvent.put("userId", userId);
+            intentEvent.put("intent", intentResult.getIntent());
+            intentEvent.put("confidence", intentResult.getConfidence());
+            intentEvent.put("entities", intentResult.getEntities());
+            intentEvent.put("originalText", transcript);
+            intentEvent.put("timestamp", Instant.now().toEpochMilli());
 
             // Publish intent event
-            kafkaTemplate.send("nlu.intent", transcriptEvent.getSessionId(), intentEvent);
+            kafkaTemplate.send("nlu.intent", sessionId, intentEvent);
 
-            log.info("Intent published: sessionId={}, intent={}, confidence={:.2f}", 
-                    transcriptEvent.getSessionId(), 
-                    intentResult.getIntent(), 
-                    intentResult.getConfidence());
+            log.info("Intent published: sessionId={}, intent={}, confidence={}", 
+                    sessionId, intentResult.getIntent(), intentResult.getConfidence());
 
         } catch (Exception e) {
-            log.error("Failed to process transcript: sessionId={}", 
-                    transcriptEvent.getSessionId(), e);
+            log.error("Failed to process transcript message", e);
         }
     }
 }
