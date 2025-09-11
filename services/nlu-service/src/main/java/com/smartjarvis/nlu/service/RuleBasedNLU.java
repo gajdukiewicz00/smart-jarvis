@@ -348,6 +348,32 @@ public class RuleBasedNLU {
             new IntentInfo("money_category_spending", 0.80f)
         );
 
+        // Calendar/Event commands
+        patterns.put(
+            Pattern.compile("(?i).*(создай|добавь|запланируй).*(встреч|событие|мероприятие).*"),
+            new IntentInfo("calendar_create", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(что|какие).*(сегодня|на сегодня).*(?:встреч|событи|план).*"),
+            new IntentInfo("calendar_today", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(что|какие).*(завтра|на завтра).*(?:встреч|событи|план).*"),
+            new IntentInfo("calendar_tomorrow", 0.85f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(что|какие).*(на неделе|на этой неделе).*(?:встреч|событи|план).*"),
+            new IntentInfo("calendar_week", 0.80f)
+        );
+        
+        patterns.put(
+            Pattern.compile("(?i).*(свободен|свободно|занят).*(?:сегодня|завтра|в).*"),
+            new IntentInfo("calendar_availability", 0.80f)
+        );
+
         // System commands
         patterns.put(
             Pattern.compile("(?i).*(стоп|остановись|хватит|отмена).*"),
