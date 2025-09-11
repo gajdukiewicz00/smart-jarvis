@@ -1,9 +1,8 @@
 package com.smartjarvis.dm.kafka;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartjarvis.dm.model.DialogDecision;
 import com.smartjarvis.dm.service.DialogManager;
-import com.smartjarvis.events.NLUIntentEvent;
-import com.smartjarvis.events.DMDecisionEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -11,6 +10,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Kafka listener for NLU intent events
@@ -23,37 +24,41 @@ public class NLUIntentListener {
 
     private final DialogManager dialogManager;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @KafkaListener(topics = "nlu.intent", groupId = "dm-service")
-    public void handleIntent(NLUIntentEvent intentEvent) {
+    public void handleIntent(String message) {
         try {
-            log.info("Processing intent: sessionId={}, intent={}, confidence={:.2f}", 
-                    intentEvent.getSessionId(), 
-                    intentEvent.getIntent(),
-                    intentEvent.getConfidence());
+            Map<?,?> payload = objectMapper.readValue(message, Map.class);
+            String sessionId = (String) payload.get("sessionId");
+            String userId = (String) payload.get("userId");
+            String intent = (String) payload.get("intent");
+            Double confidence = payload.get("confidence") instanceof Number ? ((Number) payload.get("confidence")).doubleValue() : null;
+            Object entities = payload.get("entities");
+
+            log.info("Processing intent: sessionId={}, intent={}, confidence={}", sessionId, intent, confidence);
 
             // Process intent with dialog manager
             DialogDecision decision = dialogManager.processIntent(
-                intentEvent.getIntent(),
-                intentEvent.getEntities(),
-                intentEvent.getSessionId(),
-                intentEvent.getUserId()
+                intent,
+                entities,
+                sessionId,
+                userId
             );
 
             // Create DM decision event
-            DMDecisionEvent decisionEvent = DMDecisionEvent.newBuilder()
-                    .setSessionId(decision.getSessionId())
-                    .setUserId(decision.getUserId())
-                    .setAction(decision.getAction())
-                    .setTargetService(decision.getTargetService())
-                    .setResponseText(decision.getResponseText())
-                    .setParameters(decision.getParameters())
-                    .setRequiresConfirmation(decision.isRequiresConfirmation())
-                    .setTimestamp(Instant.now().toEpochMilli())
-                    .build();
+            Map<String, Object> decisionEvent = new HashMap<>();
+            decisionEvent.put("sessionId", decision.getSessionId());
+            decisionEvent.put("userId", decision.getUserId());
+            decisionEvent.put("action", decision.getAction());
+            decisionEvent.put("targetService", decision.getTargetService());
+            decisionEvent.put("responseText", decision.getResponseText());
+            decisionEvent.put("parameters", decision.getParameters());
+            decisionEvent.put("requiresConfirmation", decision.isRequiresConfirmation());
+            decisionEvent.put("timestamp", Instant.now().toEpochMilli());
 
             // Publish decision event
-            kafkaTemplate.send("dm.decision", intentEvent.getSessionId(), decisionEvent);
+            kafkaTemplate.send("dm.decision", sessionId, decisionEvent);
 
             log.info("Decision published: sessionId={}, action={}, target={}", 
                     decision.getSessionId(), 
@@ -61,8 +66,7 @@ public class NLUIntentListener {
                     decision.getTargetService());
 
         } catch (Exception e) {
-            log.error("Failed to process intent: sessionId={}", 
-                    intentEvent.getSessionId(), e);
+            log.error("Failed to process intent message", e);
         }
     }
 }
