@@ -30,7 +30,9 @@ export const useVoiceConnection = () => {
   // Connect to WebSocket
   const connect = useCallback(() => {
     try {
-      const wsUrl = `ws://localhost:8080/voice`
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+      const wsHost = window.location.host // same host:port as web (nginx)
+      const wsUrl = `${wsProtocol}://${wsHost}/voice`
       console.log('Connecting to:', wsUrl)
       
       const ws = new WebSocket(wsUrl)
