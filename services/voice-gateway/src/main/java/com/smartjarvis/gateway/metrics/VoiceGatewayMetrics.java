@@ -23,36 +23,41 @@ public class VoiceGatewayMetrics {
     private final Counter errorsTotal;
 
     public VoiceGatewayMetrics(MeterRegistry meterRegistry) {
-        // Connection metrics
-        this.connectionsTotal = Counter.builder("voice_gateway_connections_total")
-            .description("Total number of WebSocket connections established")
-            .tag("service", "voice-gateway")
-            .register(meterRegistry);
+        try {
+            // Connection metrics
+            this.connectionsTotal = Counter.builder("voice_gateway_connections_total")
+                .description("Total number of WebSocket connections established")
+                .tag("service", "voice-gateway")
+                .register(meterRegistry);
 
-        this.activeConnections = new AtomicInteger(0);
-        Gauge.builder("voice_gateway_active_connections", activeConnections, AtomicInteger::get)
-            .description("Current number of active WebSocket connections")
-            .tag("service", "voice-gateway")
-            .register(meterRegistry);
+            this.activeConnections = new AtomicInteger(0);
+            Gauge.builder("voice_gateway_active_connections", activeConnections, AtomicInteger::get)
+                .description("Current number of active WebSocket connections")
+                .tag("service", "voice-gateway")
+                .register(meterRegistry);
 
-        // Audio processing metrics
-        this.audioMessagesTotal = Counter.builder("voice_gateway_audio_messages_total")
-            .description("Total number of audio messages processed")
-            .tag("service", "voice-gateway")
-            .register(meterRegistry);
+            // Audio processing metrics
+            this.audioMessagesTotal = Counter.builder("voice_gateway_audio_messages_total")
+                .description("Total number of audio messages processed")
+                .tag("service", "voice-gateway")
+                .register(meterRegistry);
 
-        this.audioProcessingTime = Timer.builder("voice_gateway_audio_processing_seconds")
-            .description("Time spent processing audio messages")
-            .tag("service", "voice-gateway")
-            .register(meterRegistry);
+            this.audioProcessingTime = Timer.builder("voice_gateway_audio_processing_seconds")
+                .description("Time spent processing audio messages")
+                .tag("service", "voice-gateway")
+                .register(meterRegistry);
 
-        // Error metrics
-        this.errorsTotal = Counter.builder("voice_gateway_errors_total")
-            .description("Total number of errors occurred")
-            .tag("service", "voice-gateway")
-            .register(meterRegistry);
+            // Error metrics
+            this.errorsTotal = Counter.builder("voice_gateway_errors_total")
+                .description("Total number of errors occurred")
+                .tag("service", "voice-gateway")
+                .register(meterRegistry);
 
-        log.info("Voice Gateway metrics initialized");
+            log.info("Voice Gateway metrics initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize Voice Gateway metrics: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to initialize metrics", e);
+        }
     }
 
     public void incrementConnections() {

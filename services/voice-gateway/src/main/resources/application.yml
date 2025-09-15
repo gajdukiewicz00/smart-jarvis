@@ -39,9 +39,8 @@ spring:
       url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
-        schema.registry.url: ${spring.kafka.schema-registry.url}
         acks: all
         retries: 3
         batch.size: 16384

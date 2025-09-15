@@ -182,13 +182,17 @@ public class MoneyService {
         LocalDateTime startOfMonth = now.with(TemporalAdjusters.firstDayOfMonth()).withHour(0).withMinute(0).withSecond(0);
 
         // Calculate totals
-        BigDecimal totalIncome = transactionRepository
-                .calculateTotalByTypeAndDateRange(userId, TransactionType.INCOME, startOfMonth, now)
-                .orElse(BigDecimal.ZERO);
+        List<Transaction> incomeTransactions = transactionRepository
+                .findByUserIdAndTypeAndDateRangeForTotal(userId, TransactionType.INCOME, startOfMonth, now);
+        BigDecimal totalIncome = incomeTransactions.stream()
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal totalExpenses = transactionRepository
-                .calculateTotalByTypeAndDateRange(userId, TransactionType.EXPENSE, startOfMonth, now)
-                .orElse(BigDecimal.ZERO);
+        List<Transaction> expenseTransactions = transactionRepository
+                .findByUserIdAndTypeAndDateRangeForTotal(userId, TransactionType.EXPENSE, startOfMonth, now);
+        BigDecimal totalExpenses = expenseTransactions.stream()
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal currentBalance = totalIncome.subtract(totalExpenses);
 
@@ -219,9 +223,12 @@ public class MoneyService {
                 .map(Transaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Category breakdown
-        var categorySpending = transactionRepository
-                .getCategorySpendingSummary(userId, fromDateTime, toDateTime);
+        // Category breakdown - simplified
+        Map<String, BigDecimal> categorySpending = expenses.stream()
+                .collect(Collectors.groupingBy(
+                    Transaction::getCategory,
+                    Collectors.reducing(BigDecimal.ZERO, Transaction::getAmount, BigDecimal::add)
+                ));
 
         return ExpenseReportResponse.builder()
                 .userId(userId)
@@ -229,11 +236,13 @@ public class MoneyService {
                 .toDate(to)
                 .totalExpenses(totalExpenses)
                 .transactionCount(expenses.size())
-                .categoryBreakdown(categorySpending.stream()
-                        .map(cs -> CategorySpendingResponse.builder()
-                                .category(cs.getId())
-                                .amount(cs.getTotal())
-                                .transactionCount(cs.getCount().intValue())
+                .categoryBreakdown(categorySpending.entrySet().stream()
+                        .map(entry -> CategorySpendingResponse.builder()
+                                .category(entry.getKey())
+                                .amount(entry.getValue())
+                                .transactionCount((int) expenses.stream()
+                                        .filter(t -> t.getCategory().equals(entry.getKey()))
+                                        .count())
                                 .build())
                         .collect(Collectors.toList()))
                 .averagePerDay(totalExpenses.divide(
@@ -249,15 +258,27 @@ public class MoneyService {
         LocalDateTime fromDateTime = from.atStartOfDay();
         LocalDateTime toDateTime = to.atTime(23, 59, 59);
 
-        var categorySpending = transactionRepository
-                .getCategorySpendingSummary(userId, fromDateTime, toDateTime);
+        List<Transaction> expenses = transactionRepository
+                .findByUserIdAndTypeAndDateRange(userId, TransactionType.EXPENSE, fromDateTime, toDateTime);
 
-        return categorySpending.stream()
-                .map(cs -> CategorySpendingResponse.builder()
-                        .category(cs.getId())
-                        .amount(cs.getTotal())
-                        .transactionCount(cs.getCount().intValue())
-                        .percentage(calculateCategoryPercentage(cs.getTotal(), userId, fromDateTime, toDateTime))
+        Map<String, BigDecimal> categoryTotals = expenses.stream()
+                .collect(Collectors.groupingBy(
+                    Transaction::getCategory,
+                    Collectors.reducing(BigDecimal.ZERO, Transaction::getAmount, BigDecimal::add)
+                ));
+
+        Map<String, Long> categoryCounts = expenses.stream()
+                .collect(Collectors.groupingBy(
+                    Transaction::getCategory,
+                    Collectors.counting()
+                ));
+
+        return categoryTotals.entrySet().stream()
+                .map(entry -> CategorySpendingResponse.builder()
+                        .category(entry.getKey())
+                        .amount(entry.getValue())
+                        .transactionCount(categoryCounts.getOrDefault(entry.getKey(), 0L).intValue())
+                        .percentage(calculateCategoryPercentage(entry.getValue(), userId, fromDateTime, toDateTime))
                         .build())
                 .collect(Collectors.toList());
     }
@@ -267,9 +288,11 @@ public class MoneyService {
      */
     private BigDecimal calculateCategoryPercentage(BigDecimal categoryAmount, String userId, 
                                                   LocalDateTime from, LocalDateTime to) {
-        BigDecimal totalExpenses = transactionRepository
-                .calculateTotalByTypeAndDateRange(userId, TransactionType.EXPENSE, from, to)
-                .orElse(BigDecimal.ZERO);
+        List<Transaction> expenses = transactionRepository
+                .findByUserIdAndTypeAndDateRangeForTotal(userId, TransactionType.EXPENSE, from, to);
+        BigDecimal totalExpenses = expenses.stream()
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         if (totalExpenses.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;

@@ -18,7 +18,6 @@ import java.util.Map;
  * HTTP client for Home Assistant REST API
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class HomeAssistantClient {
 

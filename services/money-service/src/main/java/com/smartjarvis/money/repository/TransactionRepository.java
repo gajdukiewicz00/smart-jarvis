@@ -62,49 +62,16 @@ public interface TransactionRepository extends MongoRepository<Transaction, Stri
     /**
      * Calculate total amount by type and date range
      */
-    @Aggregation(pipeline = {
-        "{ '$match': { 'userId': ?0, 'type': ?1, 'transactionDate': { '$gte': ?2, '$lte': ?3 } } }",
-        "{ '$group': { '_id': null, 'total': { '$sum': '$amount' } } }"
-    })
-    Optional<BigDecimal> calculateTotalByTypeAndDateRange(String userId, TransactionType type, 
-                                                         LocalDateTime from, LocalDateTime to);
+    @Query("{'userId': ?0, 'type': ?1, 'transactionDate': {'$gte': ?2, '$lte': ?3}}")
+    List<Transaction> findByUserIdAndTypeAndDateRangeForTotal(String userId, TransactionType type, 
+                                                              LocalDateTime from, LocalDateTime to);
 
     /**
      * Calculate total by category and date range
      */
-    @Aggregation(pipeline = {
-        "{ '$match': { 'userId': ?0, 'category': ?1, 'transactionDate': { '$gte': ?2, '$lte': ?3 } } }",
-        "{ '$group': { '_id': null, 'total': { '$sum': '$amount' } } }"
-    })
-    Optional<BigDecimal> calculateTotalByCategoryAndDateRange(String userId, String category,
-                                                             LocalDateTime from, LocalDateTime to);
-
-    /**
-     * Get category spending summary
-     */
-    @Aggregation(pipeline = {
-        "{ '$match': { 'userId': ?0, 'type': 'EXPENSE', 'transactionDate': { '$gte': ?1, '$lte': ?2 } } }",
-        "{ '$group': { '_id': '$category', 'total': { '$sum': '$amount' }, 'count': { '$sum': 1 } } }",
-        "{ '$sort': { 'total': -1 } }"
-    })
-    List<CategorySpendingSummary> getCategorySpendingSummary(String userId, LocalDateTime from, LocalDateTime to);
-
-    /**
-     * Get monthly spending trend
-     */
-    @Aggregation(pipeline = {
-        "{ '$match': { 'userId': ?0, 'type': 'EXPENSE', 'transactionDate': { '$gte': ?1 } } }",
-        "{ '$group': { " +
-        "    '_id': { " +
-        "      'year': { '$year': '$transactionDate' }, " +
-        "      'month': { '$month': '$transactionDate' } " +
-        "    }, " +
-        "    'total': { '$sum': '$amount' }, " +
-        "    'count': { '$sum': 1 } " +
-        "} }",
-        "{ '$sort': { '_id.year': 1, '_id.month': 1 } }"
-    })
-    List<MonthlySpendingSummary> getMonthlySpendingTrend(String userId, LocalDateTime from);
+    @Query("{'userId': ?0, 'category': ?1, 'transactionDate': {'$gte': ?2, '$lte': ?3}}")
+    List<Transaction> findByUserIdAndCategoryAndDateRangeForTotal(String userId, String category,
+                                                                 LocalDateTime from, LocalDateTime to);
 
     /**
      * Find recurring transactions
@@ -128,26 +95,4 @@ public interface TransactionRepository extends MongoRepository<Transaction, Stri
     @Query("{'userId': ?0, 'transactionDate': {'$gte': ?1}}")
     List<Transaction> findRecentTransactions(String userId, LocalDateTime since);
 
-    /**
-     * Category spending summary projection
-     */
-    interface CategorySpendingSummary {
-        String getId(); // category name
-        BigDecimal getTotal();
-        Long getCount();
-    }
-
-    /**
-     * Monthly spending summary projection
-     */
-    interface MonthlySpendingSummary {
-        MonthYear getId();
-        BigDecimal getTotal();
-        Long getCount();
-        
-        interface MonthYear {
-            int getYear();
-            int getMonth();
-        }
-    }
 }

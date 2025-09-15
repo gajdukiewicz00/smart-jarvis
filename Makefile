@@ -1,7 +1,7 @@
 # SmartJARVIS - Makefile
 # Управление микросервисами
 
-.PHONY: help up down status logs build test clean grafana prometheus jaeger
+.PHONY: help up down status logs build test clean grafana prometheus jaeger desktop mobile rust-common flutter-common
 
 help: ## Показать справку
 	@echo "SmartJARVIS - Команды управления"
@@ -16,6 +16,12 @@ help: ## Показать справку
 	@echo "  build       - Собрать все микросервисы"
 	@echo "  test        - Запустить тесты"
 	@echo "  clean       - Очистить артефакты сборки"
+	@echo ""
+	@echo "Multi-Platform:"
+	@echo "  desktop     - Собрать Tauri desktop приложение"
+	@echo "  mobile      - Собрать Flutter mobile приложение"
+	@echo "  rust-common - Собрать общие Rust библиотеки"
+	@echo "  flutter-common - Собрать общие Flutter библиотеки"
 	@echo ""
 	@echo "Мониторинг:"
 	@echo "  grafana     - Открыть Grafana (http://localhost:3001)"
@@ -100,3 +106,59 @@ jaeger: ## Открыть Jaeger
 	@command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:16686 || \
 	command -v open >/dev/null 2>&1 && open http://localhost:16686 || \
 	echo "Откройте http://localhost:16686 в браузере"
+
+desktop: ## Собрать Tauri desktop приложение
+	@echo "🖥️ Сборка Tauri desktop приложения..."
+	@if [ -d "desktop" ]; then \
+		cd desktop && \
+		if [ -f "src-tauri/Cargo.toml" ]; then \
+			cargo tauri build; \
+		else \
+			echo "⚠️ Tauri проект не инициализирован. Запустите: cargo tauri init"; \
+		fi && \
+		cd ..; \
+	else \
+		echo "❌ Папка desktop не найдена"; \
+	fi
+
+mobile: ## Собрать Flutter mobile приложение
+	@echo "📱 Сборка Flutter mobile приложения..."
+	@if [ -d "mobile" ]; then \
+		cd mobile && \
+		if [ -f "pubspec.yaml" ]; then \
+			flutter build apk --release; \
+		else \
+			echo "⚠️ Flutter проект не инициализирован. Запустите: flutter create mobile"; \
+		fi && \
+		cd ..; \
+	else \
+		echo "❌ Папка mobile не найдена"; \
+	fi
+
+rust-common: ## Собрать общие Rust библиотеки
+	@echo "🦀 Сборка общих Rust библиотек..."
+	@if [ -d "shared/rust-common" ]; then \
+		cd shared/rust-common && \
+		if [ -f "Cargo.toml" ]; then \
+			cargo build --release; \
+		else \
+			echo "⚠️ Rust библиотека не инициализирована"; \
+		fi && \
+		cd ../..; \
+	else \
+		echo "❌ Папка shared/rust-common не найдена"; \
+	fi
+
+flutter-common: ## Собрать общие Flutter библиотеки
+	@echo "📦 Сборка общих Flutter библиотек..."
+	@if [ -d "shared/flutter-common" ]; then \
+		cd shared/flutter-common && \
+		if [ -f "pubspec.yaml" ]; then \
+			flutter packages get && flutter analyze; \
+		else \
+			echo "⚠️ Flutter библиотека не инициализирована"; \
+		fi && \
+		cd ../..; \
+	else \
+		echo "❌ Папка shared/flutter-common не найдена"; \
+	fi

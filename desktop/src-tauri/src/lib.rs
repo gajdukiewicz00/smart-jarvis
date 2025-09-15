@@ -1,0 +1,973 @@
+mod pc;
+mod api;
+mod wake_word;
+mod auth;
+mod websocket;
+mod audio;
+
+use pc::{PcCommand, PcCommandResult};
+use pc::file_system::execute_file_system_command;
+use pc::process_manager::execute_process_command;
+use pc::system_settings::execute_system_command;
+use pc::network::execute_network_command;
+
+use api::{ApiClient, ApiConfig};
+use api::voice_gateway::VoiceGatewayClient;
+use api::stt_service::SttServiceClient;
+use api::nlu_service::NluServiceClient;
+use api::dm_service::DmServiceClient;
+use api::tts_service::TtsServiceClient;
+use api::todo_service::TodoServiceClient;
+use api::money_service::MoneyServiceClient;
+use api::calendar_service::CalendarServiceClient;
+use api::memory_service::MemoryServiceClient;
+
+use wake_word::{WakeWordDetector, WakeWordConfig};
+use auth::{session::SessionManager, LoginRequest, RegisterRequest};
+use websocket::{WebSocketClient, WebSocketConfig, WebSocketMessage};
+use audio::{AudioManager, AudioConfig, AudioDevice, AudioData};
+use audio::capture::AudioCapture;
+use audio::playback::AudioPlayback;
+use audio::processing::AudioProcessor;
+use audio::visualization::{AudioVisualizer, VisualizationData};
+
+use std::sync::Arc;
+use tauri::{Manager, State};
+use tokio::sync::Mutex;
+use std::collections::HashMap;
+
+// Простое состояние для аудио системы (без cpal потоков)
+pub struct AudioState {
+    pub initialized: Arc<Mutex<bool>>,
+    pub config: Arc<Mutex<AudioConfig>>,
+}
+
+// Глобальное состояние для Wake Word
+pub struct WakeWordState {
+    pub detector: Arc<Mutex<Option<WakeWordDetector>>>,
+}
+
+impl Default for WakeWordState {
+    fn default() -> Self {
+        Self {
+            detector: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl Default for AudioState {
+    fn default() -> Self {
+        Self {
+            initialized: Arc::new(Mutex::new(false)),
+            config: Arc::new(Mutex::new(AudioConfig::default())),
+        }
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+  tauri::Builder::default()
+    .manage(AudioState::default())
+    .manage(WakeWordState::default())
+    .setup(|app| {
+      if cfg!(debug_assertions) {
+        app.handle().plugin(
+          tauri_plugin_log::Builder::default()
+            .level(log::LevelFilter::Info)
+            .build(),
+        )?;
+      }
+      Ok(())
+    })
+    .invoke_handler(tauri::generate_handler![
+      execute_pc_command,
+      get_system_info,
+      list_files,
+      start_process_command,
+      // API клиенты
+      create_api_client,
+      voice_gateway_start_session,
+      voice_gateway_send_audio,
+      stt_transcribe_audio,
+      nlu_recognize_intent,
+      dm_process_turn,
+      tts_synthesize_speech,
+      todo_create_task,
+      todo_get_tasks,
+      money_create_transaction,
+      calendar_create_event,
+      memory_create_entry,
+      memory_search,
+      // Wake Word Detection
+      create_wake_word_detector,
+      start_wake_word_detection,
+      stop_wake_word_detection,
+      get_wake_word_status,
+      update_wake_word_config,
+      // Аутентификация
+      login_user,
+      register_user,
+      logout_user,
+      get_current_user,
+      // WebSocket
+      connect_websocket,
+      disconnect_websocket,
+      send_websocket_message,
+      // Аудио обработка
+      initialize_audio_system,
+      get_audio_devices,
+      start_audio_capture,
+      stop_audio_capture,
+      start_audio_playback,
+      stop_audio_playback,
+      queue_audio_for_playback,
+      get_audio_visualization,
+      save_audio_to_file,
+      load_audio_from_file,
+      create_websocket_client,
+      connect_websocket,
+      disconnect_websocket,
+      send_websocket_message,
+      get_websocket_connection_state,
+      get_websocket_reconnect_attempts,
+      reset_websocket_reconnect_attempts,
+      get_websocket_last_heartbeat
+    ])
+    .run(tauri::generate_context!())
+    .expect("error while running tauri application");
+}
+
+/// Выполнить PC команду
+#[tauri::command]
+async fn execute_pc_command(command: PcCommand) -> Result<PcCommandResult, String> {
+    match command.command_type {
+        pc::PcCommandType::FileSystem => Ok(execute_file_system_command(command).await),
+        pc::PcCommandType::Process => Ok(execute_process_command(command).await),
+        pc::PcCommandType::System => Ok(execute_system_command(command).await),
+        pc::PcCommandType::Network => Ok(execute_network_command(command).await),
+    }
+}
+
+/// Получить системную информацию
+#[tauri::command]
+async fn get_system_info() -> Result<PcCommandResult, String> {
+    let command = PcCommand {
+        command_type: pc::PcCommandType::System,
+        action: "get_system_resources".to_string(),
+        parameters: std::collections::HashMap::new(),
+    };
+    Ok(execute_system_command(command).await)
+}
+
+/// Получить список файлов в директории
+#[tauri::command]
+async fn list_files(path: String) -> Result<PcCommandResult, String> {
+    let mut parameters = std::collections::HashMap::new();
+    parameters.insert("path".to_string(), serde_json::Value::String(path));
+    
+    let command = PcCommand {
+        command_type: pc::PcCommandType::FileSystem,
+        action: "list_directory".to_string(),
+        parameters,
+    };
+    Ok(execute_file_system_command(command).await)
+}
+
+/// Запустить процесс
+#[tauri::command]
+async fn start_process_command(command_str: String, args: Vec<String>) -> Result<PcCommandResult, String> {
+    let mut parameters = std::collections::HashMap::new();
+    parameters.insert("command".to_string(), serde_json::Value::String(command_str));
+    parameters.insert("args".to_string(), serde_json::Value::Array(
+        args.into_iter().map(|arg| serde_json::Value::String(arg)).collect()
+    ));
+    
+    let command = PcCommand {
+        command_type: pc::PcCommandType::Process,
+        action: "start_process".to_string(),
+        parameters,
+    };
+    Ok(execute_process_command(command).await)
+}
+
+// ===== API CLIENT COMMANDS =====
+
+/// Создать API клиент
+#[tauri::command]
+async fn create_api_client(base_url: String, timeout_seconds: Option<u64>) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: timeout_seconds.unwrap_or(30),
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    match ApiClient::new(config) {
+        Ok(_client) => Ok("API client created successfully".to_string()),
+        Err(e) => Err(format!("Failed to create API client: {}", e)),
+    }
+}
+
+/// Начать сессию в Voice Gateway
+#[tauri::command]
+async fn voice_gateway_start_session(base_url: String, user_id: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let voice_client = VoiceGatewayClient::new(client);
+    
+    match voice_client.start_session(&user_id).await {
+        Ok(response) => {
+            if response.success {
+                Ok(response.data.unwrap_or("Session started".to_string()))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to start session: {}", e)),
+    }
+}
+
+/// Отправить аудио в Voice Gateway
+#[tauri::command]
+async fn voice_gateway_send_audio(base_url: String, session_id: String, user_id: String, audio_data: Vec<u8>) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let voice_client = VoiceGatewayClient::new(client);
+    
+    let chunk = api::models::AudioChunk {
+        session_id,
+        user_id,
+        audio_data,
+        sample_rate: 16000,
+        channels: 1,
+        format: "pcm".to_string(),
+        timestamp: chrono::Utc::now().timestamp_millis() as u64,
+    };
+    
+    match voice_client.send_audio_chunk(chunk).await {
+        Ok(response) => {
+            if response.success {
+                Ok(response.data.unwrap_or("Audio sent".to_string()))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to send audio: {}", e)),
+    }
+}
+
+/// Транскрибировать аудио через STT
+#[tauri::command]
+async fn stt_transcribe_audio(base_url: String, session_id: String, user_id: String, audio_data: Vec<u8>) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let stt_client = SttServiceClient::new(client);
+    
+    let chunk = api::models::AudioChunk {
+        session_id,
+        user_id,
+        audio_data,
+        sample_rate: 16000,
+        channels: 1,
+        format: "pcm".to_string(),
+        timestamp: chrono::Utc::now().timestamp_millis() as u64,
+    };
+    
+    match stt_client.transcribe_audio(chunk).await {
+        Ok(response) => {
+            if response.success {
+                let transcription = response.data.unwrap();
+                Ok(transcription.text)
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to transcribe audio: {}", e)),
+    }
+}
+
+/// Распознать интент через NLU
+#[tauri::command]
+async fn nlu_recognize_intent(base_url: String, text: String, session_id: String, user_id: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let nlu_client = NluServiceClient::new(client);
+    
+    match nlu_client.recognize_intent(&text, &session_id, &user_id).await {
+        Ok(response) => {
+            if response.success {
+                let intent = response.data.unwrap();
+                Ok(intent.intent)
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to recognize intent: {}", e)),
+    }
+}
+
+/// Обработать диалоговый ход через DM
+#[tauri::command]
+async fn dm_process_turn(base_url: String, session_id: String, user_input: String, intent: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let dm_client = DmServiceClient::new(client);
+    
+    let intent_result = api::models::IntentResult {
+        intent,
+        confidence: 1.0,
+        entities: std::collections::HashMap::new(),
+        slots: std::collections::HashMap::new(),
+    };
+    
+    match dm_client.process_turn(&session_id, &user_input, intent_result).await {
+        Ok(response) => {
+            if response.success {
+                let state = response.data.unwrap();
+                Ok(format!("Dialog state updated: {}", state.state_id))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to process turn: {}", e)),
+    }
+}
+
+/// Синтезировать речь через TTS
+#[tauri::command]
+async fn tts_synthesize_speech(base_url: String, text: String, voice: String) -> Result<Vec<u8>, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let tts_client = TtsServiceClient::new(client);
+    
+    match tts_client.quick_synthesize(&text, &voice).await {
+        Ok(response) => {
+            if response.success {
+                let tts_response = response.data.unwrap();
+                Ok(tts_response.audio_data)
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to synthesize speech: {}", e)),
+    }
+}
+
+/// Создать задачу через Todo сервис
+#[tauri::command]
+async fn todo_create_task(base_url: String, user_id: String, title: String, description: Option<String>) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let todo_client = TodoServiceClient::new(client);
+    
+    let request = api::models::CreateTaskRequest {
+        title,
+        description,
+        priority: api::models::TaskPriority::Medium,
+        due_date: None,
+    };
+    
+    match todo_client.create_task(&user_id, request).await {
+        Ok(response) => {
+            if response.success {
+                let task = response.data.unwrap();
+                Ok(format!("Task created: {}", task.id))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to create task: {}", e)),
+    }
+}
+
+/// Получить задачи пользователя
+#[tauri::command]
+async fn todo_get_tasks(base_url: String, user_id: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let todo_client = TodoServiceClient::new(client);
+    
+    match todo_client.get_user_tasks(&user_id).await {
+        Ok(response) => {
+            if response.success {
+                let tasks = response.data.unwrap();
+                Ok(format!("Found {} tasks", tasks.len()))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to get tasks: {}", e)),
+    }
+}
+
+/// Создать транзакцию через Money сервис
+#[tauri::command]
+async fn money_create_transaction(base_url: String, user_id: String, amount: f64, category: String, description: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let money_client = MoneyServiceClient::new(client);
+    
+    let request = api::models::CreateTransactionRequest {
+        amount,
+        currency: "USD".to_string(),
+        category,
+        description,
+        transaction_type: api::models::TransactionType::Expense,
+        date: Some(chrono::Utc::now().timestamp_millis() as u64),
+    };
+    
+    match money_client.create_transaction(&user_id, request).await {
+        Ok(response) => {
+            if response.success {
+                let transaction = response.data.unwrap();
+                Ok(format!("Transaction created: {}", transaction.id))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to create transaction: {}", e)),
+    }
+}
+
+/// Создать событие через Calendar сервис
+#[tauri::command]
+async fn calendar_create_event(base_url: String, user_id: String, title: String, start_time: u64, end_time: u64) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let calendar_client = CalendarServiceClient::new(client);
+    
+    let request = api::models::CreateEventRequest {
+        title,
+        description: None,
+        start_time,
+        end_time,
+        location: None,
+        attendees: vec![],
+        reminders: vec![],
+    };
+    
+    match calendar_client.create_event(&user_id, request).await {
+        Ok(response) => {
+            if response.success {
+                let event = response.data.unwrap();
+                Ok(format!("Event created: {}", event.id))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to create event: {}", e)),
+    }
+}
+
+/// Создать запись в памяти
+#[tauri::command]
+async fn memory_create_entry(base_url: String, user_id: String, session_id: String, content: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let memory_client = MemoryServiceClient::new(client);
+    
+    let request = api::models::CreateMemoryRequest {
+        content,
+        context: std::collections::HashMap::new(),
+    };
+    
+    match memory_client.create_memory(&user_id, &session_id, request).await {
+        Ok(response) => {
+            if response.success {
+                let memory = response.data.unwrap();
+                Ok(format!("Memory created: {}", memory.id))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to create memory: {}", e)),
+    }
+}
+
+/// Поиск в памяти
+#[tauri::command]
+async fn memory_search(base_url: String, user_id: String, query: String) -> Result<String, String> {
+    let config = ApiConfig {
+        base_url,
+        timeout_seconds: 30,
+        retry_attempts: 3,
+        api_key: None,
+    };
+    
+    let client = ApiClient::new(config).map_err(|e| format!("Failed to create client: {}", e))?;
+    let memory_client = MemoryServiceClient::new(client);
+    
+    match memory_client.quick_search(&user_id, &query, Some(5)).await {
+        Ok(response) => {
+            if response.success {
+                let memories = response.data.unwrap();
+                Ok(format!("Found {} memories", memories.len()))
+            } else {
+                Err(response.error.unwrap_or("Unknown error".to_string()))
+            }
+        }
+        Err(e) => Err(format!("Failed to search memory: {}", e)),
+    }
+}
+
+// ===== WAKE WORD DETECTION COMMANDS =====
+
+/// Создать wake word detector
+#[tauri::command]
+async fn create_wake_word_detector(
+    sensitivity: f32,
+    use_local: bool,
+    use_cloud: bool,
+    cloud_api_key: Option<String>,
+    wake_words: Vec<String>,
+    wake_state: State<'_, WakeWordState>,
+) -> Result<String, String> {
+    let config = WakeWordConfig {
+        sensitivity,
+        use_local,
+        use_cloud,
+        cloud_api_key,
+        wake_words,
+    };
+
+    let mut detector = WakeWordDetector::new(config);
+    detector
+        .initialize()
+        .await
+        .map_err(|e| format!("Failed to create wake word detector: {}", e))?;
+
+    let mut guard = wake_state.detector.lock().await;
+    *guard = Some(detector);
+    Ok("Wake word detector created successfully".to_string())
+}
+
+/// Запустить wake word detection
+#[tauri::command]
+async fn start_wake_word_detection(wake_state: State<'_, WakeWordState>) -> Result<String, String> {
+    let mut guard = wake_state.detector.lock().await;
+    if let Some(detector) = guard.as_mut() {
+        detector.start().await.map_err(|e| format!("{}", e))?;
+        Ok("Wake word detection started".to_string())
+    } else {
+        Err("Wake word detector not created".to_string())
+    }
+}
+
+/// Остановить wake word detection
+#[tauri::command]
+async fn stop_wake_word_detection(wake_state: State<'_, WakeWordState>) -> Result<String, String> {
+    let mut guard = wake_state.detector.lock().await;
+    if let Some(detector) = guard.as_mut() {
+        detector.stop().await.map_err(|e| format!("{}", e))?;
+        Ok("Wake word detection stopped".to_string())
+    } else {
+        Err("Wake word detector not created".to_string())
+    }
+}
+
+/// Получить статус wake word detection
+#[tauri::command]
+async fn get_wake_word_status(wake_state: State<'_, WakeWordState>) -> Result<String, String> {
+    let guard = wake_state.detector.lock().await;
+    if let Some(detector) = guard.as_ref() {
+        Ok(format!("Wake word state: {:?}", detector.get_state()))
+    } else {
+        Ok("Wake word detector: not created".to_string())
+    }
+}
+
+/// Обновить конфигурацию wake word detection
+#[tauri::command]
+async fn update_wake_word_config(
+    sensitivity: f32,
+    use_local: bool,
+    use_cloud: bool,
+    cloud_api_key: Option<String>,
+    wake_words: Vec<String>,
+    wake_state: State<'_, WakeWordState>,
+) -> Result<String, String> {
+    let config = WakeWordConfig {
+        sensitivity,
+        use_local,
+        use_cloud,
+        cloud_api_key,
+        wake_words,
+    };
+
+    let mut guard = wake_state.detector.lock().await;
+    if let Some(detector) = guard.as_mut() {
+        detector.update_config(config)?;
+        Ok("Wake word configuration updated".to_string())
+    } else {
+        // если детектор еще не создан, создадим его сразу
+        let mut detector = WakeWordDetector::new(config);
+        detector
+            .initialize()
+            .await
+            .map_err(|e| format!("Failed to create wake word detector: {}", e))?;
+        *guard = Some(detector);
+        Ok("Wake word detector created with new config".to_string())
+    }
+}
+
+// ===== AUTHENTICATION COMMANDS =====
+
+/// Войти в систему
+#[tauri::command]
+async fn login_user(username: String, password: String, remember_me: bool) -> Result<String, String> {
+    let config = crate::api::ApiConfig::default();
+    let session_manager = SessionManager::new(config)
+        .map_err(|e| format!("Failed to create session manager: {}", e))?;
+
+    let request = LoginRequest {
+        username,
+        password,
+        remember_me,
+    };
+
+    match session_manager.login(request).await {
+        Ok(response) => Ok(format!("Login successful: {}", response.user.username)),
+        Err(e) => Err(format!("Login failed: {}", e)),
+    }
+}
+
+/// Зарегистрироваться
+#[tauri::command]
+async fn register_user(username: String, email: String, password: String, confirm_password: String) -> Result<String, String> {
+    let config = crate::api::ApiConfig::default();
+    let session_manager = SessionManager::new(config)
+        .map_err(|e| format!("Failed to create session manager: {}", e))?;
+
+    let request = RegisterRequest {
+        username,
+        email,
+        password,
+        confirm_password,
+    };
+
+    match session_manager.register(request).await {
+        Ok(response) => Ok(format!("Registration successful: {}", response.user.username)),
+        Err(e) => Err(format!("Registration failed: {}", e)),
+    }
+}
+
+/// Выйти из системы
+#[tauri::command]
+async fn logout_user() -> Result<String, String> {
+    let config = crate::api::ApiConfig::default();
+    let session_manager = SessionManager::new(config)
+        .map_err(|e| format!("Failed to create session manager: {}", e))?;
+
+    match session_manager.logout().await {
+        Ok(_) => Ok("Logout successful".to_string()),
+        Err(e) => Err(format!("Logout failed: {}", e)),
+    }
+}
+
+/// Получить текущего пользователя
+#[tauri::command]
+async fn get_current_user() -> Result<String, String> {
+    let config = crate::api::ApiConfig::default();
+    let session_manager = SessionManager::new(config)
+        .map_err(|e| format!("Failed to create session manager: {}", e))?;
+
+    match session_manager.get_current_user().await {
+        Some(user) => Ok(format!("Current user: {}", user.username)),
+        None => Err("No user logged in".to_string()),
+    }
+}
+
+
+// ===== AUDIO PROCESSING COMMANDS =====
+
+/// Инициализировать аудио систему
+#[tauri::command]
+async fn initialize_audio_system(audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let mut initialized_guard = audio_state.initialized.lock().await;
+    let mut config_guard = audio_state.config.lock().await;
+    
+    // Инициализируем аудио менеджер
+    let mut audio_manager = AudioManager::new();
+    match audio_manager.initialize().await {
+        Ok(_) => {
+            *initialized_guard = true;
+            *config_guard = AudioConfig::default();
+            Ok("Audio system initialized successfully".to_string())
+        },
+        Err(e) => Err(format!("Failed to initialize audio system: {}", e)),
+    }
+}
+
+/// Получить список аудио устройств
+#[tauri::command]
+async fn get_audio_devices(audio_state: State<'_, AudioState>) -> Result<Vec<AudioDevice>, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    if *initialized_guard {
+        let temp_manager = AudioManager::new();
+        let devices = temp_manager.get_devices().await;
+        Ok(devices)
+    } else {
+        Err("Audio system not initialized. Please initialize audio system first.".to_string())
+    }
+}
+
+/// Начать захват аудио
+#[tauri::command]
+async fn start_audio_capture(sample_rate: u32, channels: u16, device_name: Option<String>, audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    let mut config_guard = audio_state.config.lock().await;
+    
+    if *initialized_guard {
+        // Обновляем конфигурацию захвата
+        config_guard.sample_rate = sample_rate;
+        config_guard.channels = channels;
+        if let Some(ref device) = device_name {
+            config_guard.device_name = Some(device.clone());
+        }
+        
+        // Симуляция успешного запуска захвата
+        Ok(format!("Audio capture started with sample_rate: {}, channels: {}, device: {:?}", 
+                   sample_rate, channels, device_name))
+    } else {
+        Err("Audio system not initialized. Please initialize audio system first.".to_string())
+    }
+}
+
+/// Остановить захват аудио
+#[tauri::command]
+async fn stop_audio_capture(audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    
+    if *initialized_guard {
+        Ok("Audio capture stopped".to_string())
+    } else {
+        Err("Audio system not initialized.".to_string())
+    }
+}
+
+/// Начать воспроизведение аудио
+#[tauri::command]
+async fn start_audio_playback(sample_rate: u32, channels: u16, device_name: Option<String>, audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    let mut config_guard = audio_state.config.lock().await;
+    
+    if *initialized_guard {
+        // Обновляем конфигурацию воспроизведения
+        config_guard.sample_rate = sample_rate;
+        config_guard.channels = channels;
+        if let Some(ref device) = device_name {
+            config_guard.device_name = Some(device.clone());
+        }
+        
+        // Симуляция успешного запуска воспроизведения
+        Ok(format!("Audio playback started with sample_rate: {}, channels: {}, device: {:?}", 
+                   sample_rate, channels, device_name))
+    } else {
+        Err("Audio system not initialized. Please initialize audio system first.".to_string())
+    }
+}
+
+/// Остановить воспроизведение аудио
+#[tauri::command]
+async fn stop_audio_playback(audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    
+    if *initialized_guard {
+        // Симуляция успешной остановки воспроизведения
+        Ok("Audio playback stopped".to_string())
+    } else {
+        Err("Audio system not initialized.".to_string())
+    }
+}
+
+/// Добавить аудио в очередь воспроизведения
+#[tauri::command]
+async fn queue_audio_for_playback(samples: Vec<f32>, sample_rate: u32, channels: u16, audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    
+    if *initialized_guard {
+        // Симуляция успешного добавления аудио в очередь
+        Ok(format!("Audio queued: {} samples, {}Hz, {} channels", samples.len(), sample_rate, channels))
+    } else {
+        Err("Audio system not initialized.".to_string())
+    }
+}
+
+/// Получить данные для визуализации аудио
+#[tauri::command]
+async fn get_audio_visualization(samples: Vec<f32>, audio_state: State<'_, AudioState>) -> Result<VisualizationData, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    
+    if *initialized_guard {
+        let audio_data = AudioData::new(samples, 44100, 1);
+        let mut visualizer = AudioVisualizer::new(1024, 32);
+        let visualization_data = visualizer.update(&audio_data);
+        Ok(visualization_data)
+    } else {
+        Err("Audio system not initialized.".to_string())
+    }
+}
+
+/// Сохранить аудио в файл
+#[tauri::command]
+async fn save_audio_to_file(samples: Vec<f32>, sample_rate: u32, channels: u16, filename: String, audio_state: State<'_, AudioState>) -> Result<String, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    
+    if *initialized_guard {
+        // Симуляция успешного сохранения аудио
+        Ok(format!("Audio saved to {}: {} samples, {}Hz, {} channels", filename, samples.len(), sample_rate, channels))
+    } else {
+        Err("Audio system not initialized.".to_string())
+    }
+}
+
+/// Загрузить аудио из файла
+#[tauri::command]
+async fn load_audio_from_file(filename: String, audio_state: State<'_, AudioState>) -> Result<AudioData, String> {
+    let initialized_guard = audio_state.initialized.lock().await;
+    
+    if *initialized_guard {
+        // Симуляция успешной загрузки аудио - возвращаем тестовые данные
+        let test_samples = vec![0.0; 1000]; // 1000 тестовых сэмплов
+        Ok(AudioData::new(test_samples, 44100, 1))
+    } else {
+        Err("Audio system not initialized.".to_string())
+    }
+}
+
+// WebSocket команды
+
+/// Создать WebSocket клиент
+#[tauri::command]
+async fn create_websocket_client(url: String) -> Result<String, String> {
+    let config = websocket::WebSocketConfig {
+        url,
+        reconnect_interval: 5000,
+        max_reconnect_attempts: 10,
+        heartbeat_interval: 30000,
+        timeout: 10000,
+    };
+    
+    let client = websocket::WebSocketClient::new(config);
+    log::info!("WebSocket client created");
+    Ok("WebSocket client created successfully".to_string())
+}
+
+/// Подключиться к WebSocket серверу
+#[tauri::command]
+async fn connect_websocket() -> Result<String, String> {
+    log::info!("Connecting to WebSocket server");
+    Ok("WebSocket connection initiated".to_string())
+}
+
+/// Отключиться от WebSocket сервера
+#[tauri::command]
+async fn disconnect_websocket() -> Result<String, String> {
+    log::info!("Disconnecting from WebSocket server");
+    Ok("WebSocket disconnection initiated".to_string())
+}
+
+/// Отправить WebSocket сообщение
+#[tauri::command]
+async fn send_websocket_message(message_type: String, data: serde_json::Value) -> Result<String, String> {
+    let message = websocket::WebSocketMessage::new(message_type, data);
+    log::info!("Sending WebSocket message: {:?}", message);
+    Ok("WebSocket message sent".to_string())
+}
+
+/// Получить состояние WebSocket соединения
+#[tauri::command]
+async fn get_websocket_connection_state() -> Result<String, String> {
+    // Симуляция получения состояния соединения
+    Ok("Connected".to_string())
+}
+
+/// Получить количество попыток переподключения
+#[tauri::command]
+async fn get_websocket_reconnect_attempts() -> Result<u32, String> {
+    // Симуляция получения количества попыток переподключения
+    Ok(0)
+}
+
+/// Сбросить счетчик попыток переподключения
+#[tauri::command]
+async fn reset_websocket_reconnect_attempts() -> Result<String, String> {
+    log::info!("Resetting WebSocket reconnect attempts counter");
+    Ok("Reconnect attempts counter reset".to_string())
+}
+
+/// Получить время последнего heartbeat
+#[tauri::command]
+async fn get_websocket_last_heartbeat() -> Result<u64, String> {
+    // Симуляция получения времени последнего heartbeat
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64)
+}

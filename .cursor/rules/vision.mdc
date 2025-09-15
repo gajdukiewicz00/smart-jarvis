@@ -1,6 +1,16 @@
 ---
 alwaysApply: true
 ---
+## 1. Архитектурные принципы
+
+### ПОЛНАЯ МИКРОСЕРВИСНОСТЬ
+- **КАЖДАЯ ФУНКЦИЯ = ОТДЕЛЬНЫЙ СЕРВИС** — NO монолиты, NO shared libraries с бизнес-логикой
+- **Один сервис = одна доменная область** (todo, calendar, device-agent)
+- **Event-driven через Kafka** — все взаимодействие асинхронное
+- **CQRS** — команды и запросы разделены
+- **Hexagonal Architecture** — бизнес-логика изолирована от инфраструктуры
+
+---
 ## 2. Принципы разработки
 
 ### Clean Code & SOLID
@@ -21,6 +31,7 @@ alwaysApply: true
 - **Code Review** - все изменения проходят ревью
 - **Static Analysis** - SonarQube, SpotBugs, PMD
 - **Conventional Commits** - структурированные коммиты
+- **NO УПРОЩЕНИЙ** - весь код должен быть полноценным и функциональным, никаких placeholder'ов или упрощенных реализаций
 
 ---
 
@@ -29,27 +40,38 @@ alwaysApply: true
 ### Монорепо организация
 ```
 smart-jarvis/
-├── services/           # Микросервисы
-│   ├── voice-gateway/  # WebSocket gateway
-│   ├── stt-service/    # Speech-to-Text
-│   ├── nlu-service/    # Natural Language Understanding
-│   ├── dm-service/     # Dialog Management
-│   ├── tts-service/    # Text-to-Speech
-│   ├── todo-service/   # Task management
-│   ├── money-service/  # Finance tracking
+├── desktop/              # Tauri Desktop App (Windows/Linux)
+│   ├── src-tauri/        # Rust backend + PC integration
+│   ├── src/              # React frontend
+│   └── Cargo.toml
+├── mobile/               # Flutter Mobile App (Android)
+│   ├── lib/              # Dart code
+│   ├── android/          # Android specific
+│   └── pubspec.yaml
+├── services/             # Java Microservices (Backend)
+│   ├── voice-gateway/    # WebSocket + HTTP gateway
+│   ├── stt-service/      # Speech-to-Text (Java + Whisper)
+│   ├── nlu-service/      # Natural Language Understanding
+│   ├── dm-service/       # Dialog Management
+│   ├── tts-service/      # Text-to-Speech (Java + Piper)
+│   ├── todo-service/     # Task management
+│   ├── money-service/    # Finance tracking
 │   ├── calendar-service/ # Calendar management
-│   ├── memory-service/ # Context memory
-│   ├── device-agent/   # PC control
-│   └── home-bridge/    # Home Assistant bridge
-├── web/               # React frontend
-├── mobile/            # React Native app
-├── shared/            # Общие библиотеки
-│   ├── avro-schemas/  # Avro схемы
-│   ├── java-common/   # Java утилиты
-│   └── python-common/ # Python утилиты
-├── infrastructure/    # Docker, K8s манифесты
-├── docs/             # Документация
-└── scripts/          # Автоматизация
+│   ├── memory-service/   # Context memory
+│   ├── device-agent/     # PC control (Java wrapper)
+│   ├── home-bridge/      # Home Assistant bridge
+│   └── api-gateway/      # HTTP/gRPC API Gateway
+├── shared/               # Общие библиотеки
+│   ├── avro-schemas/     # Avro схемы для Kafka
+│   ├── java-common/      # Java утилиты
+│   ├── rust-common/      # Rust утилиты
+│   └── flutter-common/   # Flutter утилиты
+├── infrastructure/       # Docker, K8s, мониторинг
+│   ├── docker/          # Docker Compose
+│   ├── kubernetes/      # K8s манифесты
+│   └── monitoring/      # Prometheus, Grafana
+├── docs/                # Документация
+└── scripts/             # Автоматизация
 ```
 
 ### Структура сервиса
@@ -72,9 +94,24 @@ service-name/
 
 ### Высокоуровневая архитектура
 ```
-[User] → [Web/Mobile] → [Voice Gateway] → [Kafka] → [Services] → [Databases]
-                ↓
-        [3D HUD] ← [WebSocket] ← [Event Stream]
+┌─────────────────┐    ┌─────────────────┐
+│   Tauri App     │    │  Flutter App    │
+│   (Desktop)     │    │   (Mobile)      │
+└─────────┬───────┘    └─────────┬───────┘
+          │                      │
+          │ HTTP/gRPC            │ HTTP/gRPC
+          │                      │
+┌─────────▼───────┐    ┌─────────▼───────┐
+│  Java Services  │    │  Java Services  │
+│  (Local Server)│    │  (Local Server)│
+└─────────┬───────┘    └─────────┬───────┘
+          │                      │
+          │ Kafka                 │ Kafka
+          │                      │
+┌─────────▼───────┐    ┌─────────▼───────┐
+│  PC Integration │    │  PC Integration │
+│  (Rust in Tauri)│   │  (Java wrapper) │
+└─────────────────┘    └─────────────────┘
 ```
 
 ### Микросервисы и их ответственности
@@ -121,21 +158,50 @@ service-name/
 - Action execution
 - Safety checks
 
+**Desktop Application (Tauri)**
+- Rust backend с встроенной PC интеграцией
+- React frontend для пользовательского интерфейса
+- HTTP/gRPC клиент для коммуникации с Java сервисами
+- Wake word detection (локальный + облачный)
+- Прямые системные вызовы (файлы, процессы, настройки)
+
+**Mobile Application (Flutter)**
+- Dart код для кроссплатформенности
+- Material Design 3 UI
+- HTTP клиент для подключения к Java сервисам
+- Голосовые команды и ответы
+- Упрощенная функциональность (без PC интеграции)
+
+**PC Integration (встроенная в Tauri)**
+- Системные вызовы через Rust FFI
+- Управление файловой системой
+- Управление процессами и приложениями
+- Системные настройки и конфигурации
+- Сетевые функции и мониторинг
+
 ### Потоки данных
 
-**Основной поток:**
-1. Audio → Voice Gateway
-2. Gateway → STT Service (via Kafka)
-3. STT → NLU Service
-4. NLU → DM Service
-5. DM → Domain/Agent Services
-6. Services → TTS Service
-7. TTS → Gateway → User
+**Desktop поток:**
+1. Wake Word Detection → Tauri App
+2. Audio → Voice Gateway (via HTTP/gRPC)
+3. Gateway → STT Service (via Kafka)
+4. STT → NLU Service
+5. NLU → DM Service
+6. DM → Domain/Agent Services
+7. Services → Tauri Rust backend (системные вызовы)
+8. Services → TTS Service
+9. TTS → Gateway → Tauri App → User
+
+**Mobile поток:**
+1. Audio → Flutter App
+2. App → Java Services (via HTTP)
+3. Services → STT/NLU/DM/TTS
+4. Response → Flutter App → User
 
 **Event Stream:**
 - Все события публикуются в Kafka
-- WebSocket подписки на события
-- HUD обновления в реальном времени
+- HTTP/gRPC подписки на события
+- Real-time обновления в приложениях
 
 ---
 
@@ -213,6 +279,12 @@ audit_logs (id, user_id, action, resource, timestamp)
 - **V1**: Rule-based NLU + простые промпты
 - **V2**: Hybrid (rules + small LLM)
 - **V3**: Full LLM integration
+
+### Режимы работы
+- **Офлайн режим**: полная локальная обработка (Whisper, Piper, локальный LLM)
+- **Онлайн режим**: облачные сервисы для сложных задач (OpenAI, Azure, Google)
+- **Гибридный режим**: автоматическое переключение между режимами
+- **Wake Word**: локальный Porcupine + облачный резерв
 
 ### Промпт инженерия
 ```yaml
@@ -565,9 +637,14 @@ resource_utilization_percentage
 ## Заключение
 
 Данное техническое видение обеспечивает:
-- **Качественную архитектуру** с четким разделением ответственности
-- **Масштабируемость** через микросервисную архитектуру
+- **Multi-Platform архитектуру** с поддержкой Desktop (Windows/Linux) и Mobile (Android)
+- **Гибридную обработку** с офлайн и онлайн режимами
+- **Полную интеграцию с PC** через Rust системные вызовы
+- **Микросервисную архитектуру** с четким разделением ответственности
+- **Масштабируемость** через event-driven архитектуру
 - **Надежность** через мониторинг и тестирование
 - **Безопасность** через многоуровневую защиту
 - **Производительность** через оптимизации и кэширование
+
+**Помни**: детали архитектуры и принципов — в [vision.md](./vision.md).
 
