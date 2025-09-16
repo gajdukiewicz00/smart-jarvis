@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+:root, html {
+  height: 100%;
+  scrollbar-gutter: stable both-edges;
+}
+
 :root {
   font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -23,7 +28,7 @@ body {
   display: block;
   min-width: 320px;
   min-height: 100vh;
-  overflow-y: auto;
+  overflow-y: scroll !important; /* всегда показывать полосу прокрутки */
   overflow-x: hidden;
 }
 
@@ -32,6 +37,7 @@ body {
   min-height: 100vh;
   margin: 0 auto;
   text-align: center;
+  overflow-y: auto;
 }
 
 /* Custom scrollbar */
