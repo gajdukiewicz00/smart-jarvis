@@ -47,7 +47,7 @@ class TTSService:
             "formal": {"speed": 0.8, "pitch": 0.9}
         }
         self.active_synthesis = {}  # sessionId -> asyncio.Task
-        logger.info("Mock TTS Service initialized with {} voice profiles", len(self.voice_profiles))
+        logger.info(f"Mock TTS Service initialized with {len(self.voice_profiles)} voice profiles")
     
     async def synthesize_speech_with_bargein(self, text: str, voice: str = "ruslan", 
                                            speed: float = 1.0, session_id: str = "default") -> Dict[str, Any]:
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=int(os.getenv("PORT", "8085")),
+        port=int(os.getenv("PORT", "8090")),
         log_level="info",
         reload=False
     )

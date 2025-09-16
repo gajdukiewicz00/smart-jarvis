@@ -1,236 +1,203 @@
-import React, { useState, useEffect } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { motion, AnimatePresence } from 'framer-motion'
-import VoiceInterface from './components/VoiceInterface'
-import HUD3D from './components/HUD3D'
-import ServiceStatus from './components/ServiceStatus'
-import TodoManager from './components/TodoManager'
-import AudioVisualizer from './components/AudioVisualizer'
-import WakeWordIndicator from './components/WakeWordIndicator'
-import { useVoiceConnection } from './hooks/useVoiceConnection'
-import { useServiceStatus } from './hooks/useServiceStatus'
-import { Mic, MicOff, Settings, List, Home } from 'lucide-react'
-
-type ViewMode = 'hud' | 'todos' | 'settings'
+import React, { useState, useEffect, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { emit, listen } from '@tauri-apps/api/event'
 
 function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('hud')
-  const [isListening, setIsListening] = useState(false)
-  const [isWakeWordActive, setIsWakeWordActive] = useState(false)
-  
-  const { 
-    isConnected, 
-    isRecording, 
-    audioLevel,
-    lastResponse,
-    isTtsActive,
-    bargeInTriggered,
-    connect,
-    disconnect,
-    startRecording,
-    stopRecording 
-  } = useVoiceConnection()
-  
-  const { services, overallHealth } = useServiceStatus()
+  const [isRecording, setIsRecording] = useState(false)
+  const [status, setStatus] = useState('Готов к работе')
+  const [permission, setPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown')
+  const [isLogsWindow, setIsLogsWindow] = useState(false)
+  const [logs, setLogs] = useState<string[]>([])
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+
+  const appendLog = (text: string) => {
+    const line = `[${new Date().toLocaleTimeString()}] ${text}`
+    if (isLogsWindow) {
+      setLogs(prev => [...prev.slice(-200), line])
+    }
+    // Tauri events (best-effort)
+    emit('sj-log', { line }).catch(() => {})
+    // localStorage bridge (works across windows reliably)
+    try { localStorage.setItem('sj-log-line', line) } catch {}
+  }
+
+  const setStatusAndLog = (text: string) => {
+    setStatus(text)
+    appendLog(text)
+  }
+
+  const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`${label}: timeout ${ms}ms`)), ms)
+      promise
+        .then((v) => { clearTimeout(t); resolve(v) })
+        .catch((e) => { clearTimeout(t); reject(e) })
+    })
+  }
 
   useEffect(() => {
-    // Auto-connect on mount
-    connect()
-    return () => disconnect()
-  }, [connect, disconnect])
+    try {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('window') === 'logs') {
+        setIsLogsWindow(true)
+      }
+    } catch {}
+  }, [])
 
-  const handleVoiceToggle = () => {
-    if (isRecording) {
-      stopRecording()
-      setIsListening(false)
-    } else {
-      startRecording()
-      setIsListening(true)
+  // Подписка на глобальные логи в окне логов
+  useEffect(() => {
+    if (!isLogsWindow) return
+    let unlisten: (() => void) | undefined
+    listen<{ line: string }>('sj-log', (e) => {
+      const line = e.payload?.line ?? ''
+      setLogs(prev => [...prev.slice(-200), line])
+    }).then((f) => { unlisten = f as unknown as () => void }).catch(() => {})
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'sj-log-line' && e.newValue) {
+        setLogs(prev => [...prev.slice(-200), e.newValue!])
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => { try { unlisten && unlisten() } catch {} ; window.removeEventListener('storage', onStorage) }
+  }, [isLogsWindow])
+
+  useEffect(() => {
+    const handler = async (e: KeyboardEvent) => {
+      if (e.code === 'F9' || e.code === 'Space') {
+        e.preventDefault()
+        await startRecording()
+      } else if (e.code === 'F10') {
+        e.preventDefault()
+        await stopRecording()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // Проверка доступа (native тест) с таймаутом
+  useEffect(() => {
+    const check = async () => {
+      try {
+        setStatusAndLog('Проверка доступа (native)...')
+        await withTimeout(invoke('start_native_recording'), 10000, 'start_native_recording')
+        const stopMsg = await withTimeout(invoke<string>('stop_native_recording'), 4000, 'stop_native_recording')
+        setPermission('granted')
+        setStatusAndLog(`Доступ к микрофону доступен (native). ${stopMsg}`)
+      } catch (e) {
+        setPermission('denied')
+        setStatusAndLog(`Проверка не удалась: ${e}`)
+      }
+    }
+    check().catch(() => setPermission('unknown'))
+  }, [])
+
+  const startRecording = async () => {
+    try {
+      setStatusAndLog('Запрос доступа к микрофону (native)...')
+      const startMsg = await withTimeout(invoke<string>('start_native_recording'), 10000, 'start_native_recording')
+      setIsRecording(true)
+      setStatusAndLog(startMsg)
+    } catch (nativeErr) {
+      setStatusAndLog(`Native ошибка: ${nativeErr}`)
+      setPermission('denied')
     }
   }
 
+  const stopRecording = async () => {
+    try {
+      const stopMsg = await withTimeout(invoke<string>('stop_native_recording'), 4000, 'stop_native_recording')
+      setStatusAndLog(stopMsg)
+    } catch (e) {
+      setStatusAndLog(`Остановка: ${e}`)
+    }
+    try {
+      mediaRecorderRef.current?.state === 'recording' && mediaRecorderRef.current.stop()
+      mediaStreamRef.current?.getTracks().forEach(t => t.stop())
+      mediaRecorderRef.current = null
+      mediaStreamRef.current = null
+    } catch {}
+
+    setIsRecording(false)
+  }
+
+  const requestPermission = async () => {
+    try {
+      setStatusAndLog('Проверяю доступ (native)...')
+      await withTimeout(invoke('start_native_recording'), 10000, 'start_native_recording')
+      const stopMsg = await withTimeout(invoke<string>('stop_native_recording'), 4000, 'stop_native_recording')
+      setPermission('granted')
+      setStatusAndLog(`Доступ к микрофону разрешён (native). ${stopMsg}`)
+    } catch (e) {
+      setPermission('denied')
+      setStatusAndLog(`Доступ к микрофону отклонён (native): ${e}`)
+    }
+  }
+
+  const probeDevices = async () => {
+    try {
+      const res = await withTimeout(invoke<string>('probe_cpal_devices'), 3000, 'probe_cpal_devices')
+      setStatusAndLog(`Аудио устройства: ${res}`)
+    } catch (e) {
+      setStatusAndLog(`Проверка устройств не удалась: ${e}`)
+    }
+  }
+
+  if (isLogsWindow) {
+    return (
+      <div className="w-full h-screen bg-black text-green-400 font-mono text-sm p-4">
+        <div className="mb-2 text-white">SmartJARVIS Logs</div>
+        <div className="w-full h-[90%] overflow-auto border border-gray-700 rounded p-2 bg-gray-900">
+          {logs.map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="w-full h-screen bg-black text-white overflow-y-auto overflow-x-hidden">
-      {/* Background HUD only on HUD view to avoid blocking scroll elsewhere */}
-      {viewMode === 'hud' && (
-        <div className="fixed inset-0 z-0 pointer-events-none select-none">
-          <Canvas camera={{ position: [0, 0, 10], fov: 60 }}>
-            <HUD3D 
-              services={services}
-              isRecording={isRecording}
-              audioLevel={audioLevel}
-              overallHealth={overallHealth}
-            />
-          </Canvas>
+    <div className="w-full h-screen bg-black text-white flex flex-col items-center justify-center">
+      <button
+        onClick={isRecording ? stopRecording : startRecording}
+        className={`w-32 h-32 rounded-full border-4 transition-all duration-300 ${
+          isRecording 
+            ? 'bg-red-600 border-red-400 shadow-red-500/50' 
+            : 'bg-green-600 border-green-400 shadow-green-500/50'
+        } shadow-2xl hover:scale-105 active:scale-95`}
+      >
+        <div className="text-4xl">
+          {isRecording ? '⏹️' : '🎤'}
         </div>
-      )}
+      </button>
 
-      {/* Top Bar */}
-      <div className="sticky top-0 left-0 right-0 z-20 flex justify-between items-center px-4 py-4 bg-black/40 backdrop-blur-md">
-        <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            SmartJARVIS
-          </h1>
-          <div className={`service-status ${overallHealth}`}>
-            {services.filter(s => s.status === 'healthy').length}/{services.length} сервисов
-          </div>
+      <div className="mt-8 text-center">
+        <div className="text-xl font-semibold mb-2">
+          {isRecording ? 'Запись...' : 'SmartJARVIS'}
         </div>
-        
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setViewMode('hud')}
-            className={`p-2 rounded-lg transition-colors ${
-              viewMode === 'hud' ? 'bg-blue-500/30 text-blue-400' : 'hover:bg-white/10'
-            }`}
-          >
-            <Home size={20} />
-          </button>
-          <button
-            onClick={() => setViewMode('todos')}
-            className={`p-2 rounded-lg transition-colors ${
-              viewMode === 'todos' ? 'bg-blue-500/30 text-blue-400' : 'hover:bg-white/10'
-            }`}
-          >
-            <List size={20} />
-          </button>
-          <button
-            onClick={() => setViewMode('settings')}
-            className={`p-2 rounded-lg transition-colors ${
-              viewMode === 'settings' ? 'bg-blue-500/30 text-blue-400' : 'hover:bg-white/10'
-            }`}
-          >
-            <Settings size={20} />
-          </button>
+        <div className="text-sm text-gray-400">
+          {status}
         </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="relative z-10 flex flex-col pb-24 pt-4">
-        <div className="w-full max-w-6xl mx-auto px-6">
-          <AnimatePresence mode="wait">
-            {viewMode === 'hud' && (
-              <motion.div
-                key="hud"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-center flex flex-col items-center"
-              >
-                {/* Central Voice Interface */}
-                <VoiceInterface
-                  isConnected={isConnected}
-                  isRecording={isRecording}
-                  audioLevel={audioLevel}
-                  isTtsActive={isTtsActive}
-                  bargeInTriggered={bargeInTriggered}
-                  onToggleRecording={handleVoiceToggle}
-                />
-                
-                {/* Last Response */}
-                {lastResponse && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-8 max-w-md mx-auto"
-                  >
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <p className="text-sm text-gray-300">Последний ответ:</p>
-                      <p className="text-white">{lastResponse}</p>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
-            
-            {viewMode === 'todos' && (
-              <motion.div
-                key="todos"
-                initial={{ opacity: 0, x: 100 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -100 }}
-                className="w-full max-w-4xl mx-auto p-6"
-              >
-                <TodoManager />
-              </motion.div>
-            )}
-            
-            {viewMode === 'settings' && (
-              <motion.div
-                key="settings"
-                initial={{ opacity: 0, x: 100 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -100 }}
-                className="w-full max-w-4xl mx-auto p-6"
-              >
-                <div className="space-y-6 pr-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-xl font-semibold">Статус и настройки</h2>
-                    <button
-                      onClick={() => {
-                        const el = document.getElementById('wake-word');
-                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }}
-                      className="text-sm px-3 py-1 rounded bg-blue-600 hover:bg-blue-700"
-                    >
-                      К блоку Wake Word
-                    </button>
-                  </div>
-                  <ServiceStatus services={services} />
-                  <div id="wake-word">
-                    <WakeWordIndicator 
-                      isActive={isWakeWordActive}
-                      onToggle={setIsWakeWordActive}
-                    />
-                  </div>
-                  <div id="bottom-anchor" />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Bottom Audio Visualizer */}
-        {isRecording && (
-          <div className="absolute bottom-4 left-4 right-4 z-20">
-            <AudioVisualizer audioLevel={audioLevel} isActive={isRecording} />
-          </div>
-        )}
-      </div>
-
-      {/* Connection Status */}
-      <div className="absolute bottom-4 right-4 z-20">
-        <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg backdrop-blur-sm ${
-          isConnected ? 'bg-green-500/20 border border-green-500/30' : 'bg-red-500/20 border border-red-500/30'
-        }`}>
-          {isConnected ? (
-            <Mic className="w-4 h-4 text-green-400" />
-          ) : (
-            <MicOff className="w-4 h-4 text-red-400" />
+        <div className="mt-3 flex items-center gap-2 justify-center">
+          {permission !== 'granted' && (
+            <button onClick={requestPermission} className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded">Разрешить микрофон (native)</button>
           )}
-          <span className="text-xs">
-            {isConnected ? 'Подключено' : 'Отключено'}
-          </span>
+          <button onClick={probeDevices} className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded">Проверить устройства</button>
         </div>
       </div>
 
-      {/* Quick scroll buttons */}
-      {viewMode === 'settings' && (
-        <div className="fixed bottom-4 left-4 z-20 flex flex-col space-y-2">
-          <button
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="px-3 py-2 text-xs rounded bg-gray-700 hover:bg-gray-600"
-          >
-            Вверх
-          </button>
-          <button
-            onClick={() => {
-              const el = document.getElementById('bottom-anchor');
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            }}
-            className="px-3 py-2 text-xs rounded bg-gray-700 hover:bg-gray-600"
-          >
-            Вниз
-          </button>
+      <div className="mt-8 text-xs text-gray-500 text-center">
+        <div>F9 или Space - начать запись</div>
+        <div>F10 - остановить запись</div>
+      </div>
+
+      {isRecording && (
+        <div className="mt-4 flex items-center space-x-2">
+          <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+          <span className="text-sm">Запись активна</span>
         </div>
       )}
     </div>

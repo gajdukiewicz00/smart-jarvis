@@ -1,0 +1,76 @@
+{
+  "namespace": "com.smartjarvis.events.money",
+  "type": "record",
+  "name": "TransactionCreatedEvent",
+  "doc": "Событие создания финансовой транзакции",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "transactionId",
+      "type": "string",
+      "doc": "Идентификатор транзакции"
+    },
+    {
+      "name": "amount",
+      "type": "double",
+      "doc": "Сумма транзакции"
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "default": "USD",
+      "doc": "Валюта транзакции"
+    },
+    {
+      "name": "transactionType",
+      "type": {
+        "type": "enum",
+        "name": "TransactionType",
+        "symbols": ["INCOME", "EXPENSE", "TRANSFER", "INVESTMENT"]
+      },
+      "doc": "Тип транзакции"
+    },
+    {
+      "name": "category",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Категория транзакции"
+    },
+    {
+      "name": "description",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Описание транзакции"
+    },
+    {
+      "name": "transactionDate",
+      "type": "long",
+      "doc": "Дата транзакции в миллисекундах"
+    },
+    {
+      "name": "paymentMethod",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Способ оплаты"
+    },
+    {
+      "name": "tags",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Теги транзакции"
+    },
+    {
+      "name": "isRecurring",
+      "type": "boolean",
+      "default": false,
+      "doc": "Является ли транзакция повторяющейся"
+    }
+  ]
+}

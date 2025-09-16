@@ -14,13 +14,9 @@ use std::collections::HashMap;
 use walkdir::WalkDir;
 use zip::ZipWriter;
 use zip::write::FileOptions;
-use std::io::Write;
 use std::fs::File;
 use tar::Builder as TarBuilder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
 use glob::Pattern;
-use ignore::Walk;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileInfo {
@@ -431,7 +427,7 @@ fn create_zip_archive(command: PcCommand) -> PcCommandResult {
 fn add_directory_to_zip(
     zip: &mut ZipWriter<File>,
     source_dir: &str,
-    archive_path: &str,
+    _archive_path: &str,
     options: &FileOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for entry in WalkDir::new(source_dir) {

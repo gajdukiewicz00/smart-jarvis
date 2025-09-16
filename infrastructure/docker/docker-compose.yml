@@ -177,6 +177,63 @@ services:
     networks:
       - smartjarvis-network
 
+  # Exporters
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    hostname: kafka-exporter
+    container_name: smartjarvis-kafka-exporter
+    command:
+      - '--kafka.server=kafka:29092'
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    hostname: redis-exporter
+    container_name: smartjarvis-redis-exporter
+    environment:
+      - REDIS_ADDR=redis://:secret@redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    hostname: postgres-exporter
+    container_name: smartjarvis-postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://jarvis:secret@postgres:5432/smartjarvis?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.40.0
+    hostname: mongodb-exporter
+    container_name: smartjarvis-mongodb-exporter
+    environment:
+      - MONGODB_URI=mongodb://jarvis:secret@mongodb:27017
+    ports:
+      - "9216:9216"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
   jaeger:
     image: jaegertracing/all-in-one:1.47
     hostname: jaeger
@@ -418,24 +475,24 @@ services:
     networks:
       - smartjarvis-network
 
-  # Web UI
-  web:
-    build:
-      context: ../../web
-      dockerfile: Dockerfile
-    hostname: web
-    container_name: smartjarvis-web
-    ports:
-      - "3000:3000"
-    depends_on:
-      - voice-gateway
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - smartjarvis-network
+  # Web UI (removed)
+  # web:
+  #   build:
+  #     context: ../../web
+  #     dockerfile: Dockerfile
+  #   hostname: web
+  #   container_name: smartjarvis-web
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - voice-gateway
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   networks:
+  #     - smartjarvis-network
 
   # Voice Gateway Service
   voice-gateway:

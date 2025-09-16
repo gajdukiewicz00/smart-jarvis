@@ -1,0 +1,54 @@
+{
+  "namespace": "com.smartjarvis.events.memory",
+  "type": "record",
+  "name": "ContextUpdatedEvent",
+  "doc": "Событие обновления контекста памяти",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "contextType",
+      "type": {
+        "type": "enum",
+        "name": "ContextType",
+        "symbols": ["CONVERSATION", "PREFERENCE", "KNOWLEDGE", "BEHAVIOR", "ENVIRONMENT"]
+      },
+      "doc": "Тип контекста"
+    },
+    {
+      "name": "contextData",
+      "type": "map",
+      "values": "string",
+      "doc": "Данные контекста"
+    },
+    {
+      "name": "importance",
+      "type": "int",
+      "default": 1,
+      "doc": "Важность контекста (1-10)"
+    },
+    {
+      "name": "expirationTime",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Время истечения в миллисекундах"
+    },
+    {
+      "name": "source",
+      "type": "string",
+      "doc": "Источник контекста"
+    },
+    {
+      "name": "embeddings",
+      "type": {
+        "type": "array",
+        "items": "double"
+      },
+      "default": [],
+      "doc": "Векторные представления для поиска"
+    }
+  ]
+}

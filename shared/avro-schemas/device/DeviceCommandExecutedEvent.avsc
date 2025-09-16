@@ -1,0 +1,59 @@
+{
+  "namespace": "com.smartjarvis.events.device",
+  "type": "record",
+  "name": "DeviceCommandExecutedEvent",
+  "doc": "Событие выполнения команды устройства",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "commandId",
+      "type": "string",
+      "doc": "Идентификатор команды"
+    },
+    {
+      "name": "commandType",
+      "type": {
+        "type": "enum",
+        "name": "CommandType",
+        "symbols": ["FILE_OPERATION", "PROCESS_MANAGEMENT", "SYSTEM_SETTINGS", "NETWORK_OPERATION", "APPLICATION_CONTROL"]
+      },
+      "doc": "Тип команды"
+    },
+    {
+      "name": "commandData",
+      "type": "map",
+      "values": "string",
+      "doc": "Данные команды"
+    },
+    {
+      "name": "executionStatus",
+      "type": {
+        "type": "enum",
+        "name": "ExecutionStatus",
+        "symbols": ["SUCCESS", "FAILED", "PARTIAL", "TIMEOUT"]
+      },
+      "doc": "Статус выполнения"
+    },
+    {
+      "name": "executionTimeMs",
+      "type": "long",
+      "doc": "Время выполнения в миллисекундах"
+    },
+    {
+      "name": "result",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Результат выполнения"
+    },
+    {
+      "name": "errorMessage",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Сообщение об ошибке"
+    }
+  ]
+}

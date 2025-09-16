@@ -3,14 +3,18 @@ spring:
     name: voice-gateway
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
-
-  # Database configuration
-  datasource:
-    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/smartjarvis}
-    username: ${POSTGRES_USERNAME:jarvis}
-    password: ${POSTGRES_PASSWORD:secret}
-    driver-class-name: org.postgresql.Driver
   
+  # Database Configuration
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/smartjarvis}
+    username: ${DATABASE_USERNAME:jarvis}
+    password: ${DATABASE_PASSWORD:jarvis_secret_2024}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  # JPA Configuration
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,47 +22,26 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
 
-  # Redis configuration
-  data:
-    redis:
-      url: ${REDIS_URL:redis://localhost:6379}
-      password: ${REDIS_PASSWORD:secret}
-      timeout: 2000ms
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
-
-  # Kafka configuration
+  # Kafka Configuration
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    schema-registry:
-      url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    consumer:
+      group-id: voice-gateway
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      properties:
-        acks: all
-        retries: 3
-        batch.size: 16384
-        linger.ms: 5
-        compression.type: snappy
-        enable.idempotence: true
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
 
-# Server configuration
+# Server Configuration
 server:
-  port: ${SERVER_PORT:8080}
-  servlet:
-    context-path: /
-  compression:
-    enabled: true
-    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
-    min-response-size: 1024
+  port: ${VOICE_GATEWAY_PORT:8081}
 
-# Management endpoints
+# Management Endpoints
 management:
   endpoints:
     web:
@@ -67,92 +50,54 @@ management:
   endpoint:
     health:
       show-details: always
-    metrics:
-      enabled: true
-    prometheus:
-      enabled: true
   metrics:
     export:
       prometheus:
         enabled: true
-    tags:
-      service: voice-gateway
-      version: 1.0.0-SNAPSHOT
 
-# Logging configuration
+# Logging Configuration
 logging:
   level:
     com.smartjarvis: ${LOG_LEVEL:INFO}
     org.springframework.kafka: WARN
-    org.apache.kafka: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId}] %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId}] %logger{36} - %msg%n"
 
-# OpenTelemetry configuration
-otel:
-  service:
-    name: voice-gateway
-  exporter:
-    jaeger:
-      endpoint: ${JAEGER_ENDPOINT:http://localhost:14250}
-  traces:
-    exporter: jaeger
+# WebSocket Configuration
+websocket:
+  allowed-origins: "*"
+  max-sessions-per-user: 5
+  session-timeout: 300000 # 5 minutes
 
-# Custom application properties
-smartjarvis:
-  voice-gateway:
-    websocket:
-      max-sessions: 1000
-      max-message-size: 1048576  # 1MB
-      heartbeat-interval: 30000  # 30 seconds
-    audio:
-      max-duration: 30  # seconds
-      supported-formats:
-        - pcm_16khz
-        - pcm_8khz
-    security:
-      cors:
-        allowed-origins: "*"  # TODO: configure for production
-        allowed-methods: GET,POST,PUT,DELETE,OPTIONS
-        allowed-headers: "*"
+# Audio Configuration
+audio:
+  sample-rate: 16000
+  channels: 1
+  bit-depth: 16
+  chunk-size: 1024
+  max-duration: 30000 # 30 seconds
 
----
-# Docker profile
-spring:
-  config:
-    activate:
-      on-profile: docker
-  datasource:
-    url: jdbc:postgresql://postgres:5432/smartjarvis
-  data:
-    redis:
-      url: ${REDIS_URL:redis://:secret@redis:6379}
-  kafka:
-    bootstrap-servers: kafka:29092
-    schema-registry:
-      url: http://schema-registry:8081
+# External Services
+external:
+  services:
+    stt-service:
+      url: http://localhost:8082
+    nlu-service:
+      url: http://localhost:8083
+    dm-service:
+      url: http://localhost:8084
+    tts-service:
+      url: http://localhost:8085
 
-otel:
-  exporter:
-    jaeger:
-      endpoint: http://jaeger:14250
-
----
-# Test profile  
-spring:
-  config:
-    activate:
-      on-profile: test
-  datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-  kafka:
-    bootstrap-servers: ${spring.embedded.kafka.brokers}
-
-logging:
-  level:
-    com.smartjarvis: DEBUG
+# Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      stt-service:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10
+      tts-service:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10

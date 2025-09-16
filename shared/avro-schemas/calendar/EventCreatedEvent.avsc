@@ -1,0 +1,121 @@
+{
+  "namespace": "com.smartjarvis.events.calendar",
+  "type": "record",
+  "name": "EventCreatedEvent",
+  "doc": "Событие создания календарного события",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Идентификатор события"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "doc": "Название события"
+    },
+    {
+      "name": "description",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Описание события"
+    },
+    {
+      "name": "startTime",
+      "type": "long",
+      "doc": "Время начала в миллисекундах"
+    },
+    {
+      "name": "endTime",
+      "type": "long",
+      "doc": "Время окончания в миллисекундах"
+    },
+    {
+      "name": "location",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Место проведения"
+    },
+    {
+      "name": "category",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Категория события"
+    },
+    {
+      "name": "attendees",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Attendee",
+          "fields": [
+            {
+              "name": "email",
+              "type": "string",
+              "doc": "Email участника"
+            },
+            {
+              "name": "name",
+              "type": ["null", "string"],
+              "default": null,
+              "doc": "Имя участника"
+            },
+            {
+              "name": "status",
+              "type": {
+                "type": "enum",
+                "name": "AttendeeStatus",
+                "symbols": ["PENDING", "ACCEPTED", "DECLINED", "TENTATIVE"]
+              },
+              "default": "PENDING",
+              "doc": "Статус участия"
+            }
+          ]
+        }
+      },
+      "default": [],
+      "doc": "Участники события"
+    },
+    {
+      "name": "isAllDay",
+      "type": "boolean",
+      "default": false,
+      "doc": "Является ли событие целодневным"
+    },
+    {
+      "name": "reminders",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Reminder",
+          "fields": [
+            {
+              "name": "minutesBefore",
+              "type": "int",
+              "doc": "Минуты до события"
+            },
+            {
+              "name": "type",
+              "type": {
+                "type": "enum",
+                "name": "ReminderType",
+                "symbols": ["NOTIFICATION", "EMAIL", "SMS", "VOICE"]
+              },
+              "default": "NOTIFICATION",
+              "doc": "Тип напоминания"
+            }
+          ]
+        }
+      },
+      "default": [],
+      "doc": "Напоминания"
+    }
+  ]
+}

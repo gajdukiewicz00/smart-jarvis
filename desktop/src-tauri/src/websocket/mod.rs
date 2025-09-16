@@ -2,12 +2,10 @@ pub mod client;
 pub mod events;
 
 pub use client::WebSocketClientImpl;
-pub use events::{WebSocketEvent, WebSocketEventHandler, WebSocketEventType};
+pub use events::{WebSocketEvent, WebSocketEventHandler};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 /// Состояние WebSocket соединения
 #[derive(Debug, Clone, PartialEq)]

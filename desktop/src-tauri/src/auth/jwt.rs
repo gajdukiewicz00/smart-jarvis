@@ -1,6 +1,6 @@
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
+use chrono::{Utc, Duration};
 use anyhow::Result;
 
 /// JWT Claims

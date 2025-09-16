@@ -24,16 +24,25 @@ scrape_configs:
     static_configs:
       - targets: ['kafka:9101']
 
-  # PostgreSQL Metrics (если добавим exporter)
-  - job_name: 'postgres'
+  # Exporters (HTTP endpoints)
+  - job_name: 'kafka-exporter'
     static_configs:
-      - targets: ['postgres:5432']
+      - targets: ['kafka-exporter:9308']
     scrape_interval: 10s
 
-  # Redis Metrics (если добавим exporter)  
-  - job_name: 'redis'
+  - job_name: 'redis-exporter'
     static_configs:
-      - targets: ['redis:6379']
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 10s
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 10s
+
+  - job_name: 'mongodb-exporter'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
     scrape_interval: 10s
 
   # Future microservices

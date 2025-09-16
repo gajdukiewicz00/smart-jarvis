@@ -59,33 +59,7 @@ smartjarvis:
     token: "${HA_TOKEN:your_long_lived_access_token_here}"
     timeout: 10000  # 10 seconds
     retry-attempts: 3
-    entities:
-      lights:
-        гостиная: "light.living_room_main"
-        спальня: "light.bedroom_main"
-        кухня: "light.kitchen_main"
-        ванная: "light.bathroom_main"
-        коридор: "light.hallway_main"
-        кабинет: "light.office_main"
-      media-players:
-        гостиная: "media_player.living_room_speaker"
-        спальня: "media_player.bedroom_speaker"
-        кухня: "media_player.kitchen_speaker"
-        везде: "media_player.group_all_speakers"
-        компьютер: "media_player.computer_audio"
-      scenes:
-        фокус: "scene.focus_mode"
-        релакс: "scene.relax_mode"
-        сон: "scene.sleep_mode"
-        работа: "scene.work_mode"
-        кино: "scene.movie_mode"
-        вечеринка: "scene.party_mode"
-        утро: "scene.morning_routine"
-        вечер: "scene.evening_routine"
-      switches:
-        компьютер: "switch.pc_power"
-        монитор: "switch.monitor_power"
-        принтер: "switch.printer_power"
+    # entities: # Используются значения по умолчанию из Java кода
         роутер: "switch.router_power"
 
 ---

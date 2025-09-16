@@ -7,12 +7,10 @@
 
 use super::{PcCommand, PcCommandResult};
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, Process, Pid};
+use sysinfo::{System, Pid};
 use std::process::{Command, Stdio};
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
-use image::{ImageBuffer, RgbImage, Rgb};
+use image::{ImageBuffer, RgbImage};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessInfo {
@@ -73,7 +71,7 @@ pub async fn execute_process_command(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить список процессов
-fn list_processes(command: PcCommand) -> PcCommandResult {
+fn list_processes(_command: PcCommand) -> PcCommandResult {
     let mut system = System::new_all();
     system.refresh_all();
 
@@ -200,7 +198,7 @@ fn start_process(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить системную информацию
-fn get_system_info(command: PcCommand) -> PcCommandResult {
+fn get_system_info(_command: PcCommand) -> PcCommandResult {
     let mut system = System::new_all();
     system.refresh_all();
 
@@ -231,7 +229,7 @@ fn get_system_info(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить список окон (упрощенная реализация)
-fn list_windows(command: PcCommand) -> PcCommandResult {
+fn list_windows(_command: PcCommand) -> PcCommandResult {
     // Упрощенная реализация - возвращаем информацию о процессах как окнах
     let mut system = System::new_all();
     system.refresh_all();
@@ -420,7 +418,7 @@ fn take_screenshot(command: PcCommand) -> PcCommandResult {
 }
 
 /// Заблокировать экран
-fn lock_screen(command: PcCommand) -> PcCommandResult {
+fn lock_screen(_command: PcCommand) -> PcCommandResult {
     #[cfg(target_os = "linux")]
     {
         match Command::new("gnome-screensaver-command")

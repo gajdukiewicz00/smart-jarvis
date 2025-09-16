@@ -47,8 +47,8 @@ pub async fn execute_system_command(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить информацию об операционной системе
-fn get_os_info(command: PcCommand) -> PcCommandResult {
-    let system = System::new_all();
+fn get_os_info(_command: PcCommand) -> PcCommandResult {
+    let _system = System::new_all();
     
     let os_info = OsInfo {
         name: System::name().unwrap_or_else(|| "Unknown".to_string()),
@@ -65,7 +65,7 @@ fn get_os_info(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить информацию о пользователе
-fn get_user_info(command: PcCommand) -> PcCommandResult {
+fn get_user_info(_command: PcCommand) -> PcCommandResult {
     let user_info = UserInfo {
         username: env::var("USER").unwrap_or_else(|_| "Unknown".to_string()),
         home_dir: env::var("HOME").unwrap_or_else(|_| "Unknown".to_string()),
@@ -82,7 +82,7 @@ fn get_user_info(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить все переменные окружения
-fn get_environment(command: PcCommand) -> PcCommandResult {
+fn get_environment(_command: PcCommand) -> PcCommandResult {
     let mut variables = HashMap::new();
     
     for (key, value) in env::vars() {
@@ -136,7 +136,7 @@ fn set_environment_variable(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить информацию о системных ресурсах
-fn get_system_resources(command: PcCommand) -> PcCommandResult {
+fn get_system_resources(_command: PcCommand) -> PcCommandResult {
     let mut system = System::new_all();
     system.refresh_all();
 

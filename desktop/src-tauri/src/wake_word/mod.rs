@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::collections::HashMap;
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
-use cpal::{Stream, StreamConfig, SampleFormat, SampleRate};
+use cpal::{SampleFormat};
 use ringbuf::{HeapRb, traits::{Consumer, Observer, Producer}};
 
 /// Конфигурация wake word detection

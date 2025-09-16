@@ -1,0 +1,64 @@
+{
+  "namespace": "com.smartjarvis.events.home",
+  "type": "record",
+  "name": "DeviceControlledEvent",
+  "doc": "Событие управления устройством умного дома",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "deviceId",
+      "type": "string",
+      "doc": "Идентификатор устройства"
+    },
+    {
+      "name": "deviceName",
+      "type": "string",
+      "doc": "Название устройства"
+    },
+    {
+      "name": "deviceType",
+      "type": {
+        "type": "enum",
+        "name": "DeviceType",
+        "symbols": ["LIGHT", "SWITCH", "SENSOR", "THERMOSTAT", "CAMERA", "DOOR_LOCK", "SPEAKER", "TV", "OTHER"]
+      },
+      "doc": "Тип устройства"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "doc": "Выполненное действие"
+    },
+    {
+      "name": "parameters",
+      "type": "map",
+      "values": "string",
+      "doc": "Параметры действия"
+    },
+    {
+      "name": "previousState",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Предыдущее состояние устройства"
+    },
+    {
+      "name": "newState",
+      "type": "string",
+      "doc": "Новое состояние устройства"
+    },
+    {
+      "name": "success",
+      "type": "boolean",
+      "doc": "Успешность выполнения"
+    },
+    {
+      "name": "responseTimeMs",
+      "type": "long",
+      "doc": "Время отклика в миллисекундах"
+    }
+  ]
+}

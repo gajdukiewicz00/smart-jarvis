@@ -15,7 +15,6 @@ pub use client::ApiClient;
 pub use models::*;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Базовый ответ от API
 #[derive(Debug, Serialize, Deserialize)]

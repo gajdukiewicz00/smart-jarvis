@@ -147,7 +147,7 @@ impl WebSocketClientImpl {
         
         while is_running.load(Ordering::Relaxed) {
             match Self::establish_connection(&config).await {
-                Ok((mut ws_stream, mut ws_sink)) => {
+                Ok((ws_stream, ws_sink)) => {
                     info!("WebSocket connection established successfully");
                     
                     // Соединение установлено
@@ -284,7 +284,7 @@ impl WebSocketClientImpl {
     async fn handle_websocket_messages(
         mut ws_stream: futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
         mut ws_sink: futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Message>,
-        state: Arc<RwLock<ConnectionState>>,
+        _state: Arc<RwLock<ConnectionState>>,
         is_running: Arc<AtomicBool>,
         message_sender: Option<mpsc::UnboundedSender<WebSocketMessage>>,
         last_heartbeat: Arc<RwLock<std::time::Instant>>,

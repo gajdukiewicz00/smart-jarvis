@@ -1,0 +1,65 @@
+{
+  "namespace": "com.smartjarvis.events.system",
+  "type": "record",
+  "name": "UserSessionStartedEvent",
+  "doc": "Событие начала пользовательской сессии",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "sessionType",
+      "type": {
+        "type": "enum",
+        "name": "SessionType",
+        "symbols": ["DESKTOP", "MOBILE", "WEB", "API"]
+      },
+      "doc": "Тип сессии"
+    },
+    {
+      "name": "clientInfo",
+      "type": {
+        "type": "record",
+        "name": "ClientInfo",
+        "fields": [
+          {
+            "name": "userAgent",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "User Agent клиента"
+          },
+          {
+            "name": "ipAddress",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "IP адрес клиента"
+          },
+          {
+            "name": "deviceType",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Тип устройства"
+          },
+          {
+            "name": "osVersion",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Версия ОС"
+          }
+        ]
+      },
+      "doc": "Информация о клиенте"
+    },
+    {
+      "name": "features",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Доступные функции в сессии"
+    }
+  ]
+}

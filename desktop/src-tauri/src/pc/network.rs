@@ -7,8 +7,6 @@
 
 use super::{PcCommand, PcCommandResult};
 use serde::{Deserialize, Serialize};
-use sysinfo::System;
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NetworkInterface {
@@ -39,7 +37,7 @@ pub async fn execute_network_command(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить общую сетевую информацию
-fn get_network_info(command: PcCommand) -> PcCommandResult {
+fn get_network_info(_command: PcCommand) -> PcCommandResult {
     // В новой версии sysinfo сетевые интерфейсы работают по-другому
     // Пока возвращаем заглушку
     let network_info = NetworkInfo {
@@ -55,7 +53,7 @@ fn get_network_info(command: PcCommand) -> PcCommandResult {
 }
 
 /// Получить список сетевых интерфейсов
-fn get_network_interfaces(command: PcCommand) -> PcCommandResult {
+fn get_network_interfaces(_command: PcCommand) -> PcCommandResult {
     // В новой версии sysinfo сетевые интерфейсы работают по-другому
     // Пока возвращаем заглушку
     let interfaces: Vec<NetworkInterface> = Vec::new();

@@ -1,5 +1,5 @@
-use super::{AudioConfig, AudioData, AudioState};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use super::{AudioConfig, AudioData};
+use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::{Device, SampleFormat, SampleRate, Stream, StreamConfig};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -153,10 +153,10 @@ impl AudioCapture {
     /// Обработать аудио данные
     fn process_audio_data(
         data: &[f32],
-        rx: &mut mpsc::UnboundedReceiver<AudioData>,
+        _rx: &mut mpsc::UnboundedReceiver<AudioData>,
     ) {
         // Создаем AudioData из samples
-        let audio_data = AudioData::new(
+        let _audio_data = AudioData::new(
             data.to_vec(),
             44100, // Заглушка
             1,     // Заглушка

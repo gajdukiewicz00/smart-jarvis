@@ -1,0 +1,38 @@
+{
+  "namespace": "com.smartjarvis.events.voice",
+  "type": "record",
+  "name": "AudioIncomingEvent",
+  "doc": "Событие входящего аудио",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "audioData",
+      "type": "com.smartjarvis.events.common.AudioData",
+      "doc": "Аудио данные"
+    },
+    {
+      "name": "chunkIndex",
+      "type": "int",
+      "doc": "Индекс аудио чанка"
+    },
+    {
+      "name": "isLastChunk",
+      "type": "boolean",
+      "default": false,
+      "doc": "Является ли это последним чанком"
+    },
+    {
+      "name": "source",
+      "type": {
+        "type": "enum",
+        "name": "AudioSource",
+        "symbols": ["MICROPHONE", "FILE", "STREAM", "WEBRTC"]
+      },
+      "doc": "Источник аудио"
+    }
+  ]
+}

@@ -24,17 +24,18 @@ use api::memory_service::MemoryServiceClient;
 
 use wake_word::{WakeWordDetector, WakeWordConfig};
 use auth::{session::SessionManager, LoginRequest, RegisterRequest};
-use websocket::{WebSocketClient, WebSocketConfig, WebSocketMessage};
 use audio::{AudioManager, AudioConfig, AudioDevice, AudioData};
-use audio::capture::AudioCapture;
-use audio::playback::AudioPlayback;
-use audio::processing::AudioProcessor;
 use audio::visualization::{AudioVisualizer, VisualizationData};
 
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::State;
 use tokio::sync::Mutex;
-use std::collections::HashMap;
+use std::sync::OnceLock;
+use std::thread;
+use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
+use futures_util::SinkExt;
+use std::sync::mpsc;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 // Простое состояние для аудио системы (без cpal потоков)
 pub struct AudioState {
@@ -55,6 +56,10 @@ impl Default for WakeWordState {
     }
 }
 
+// ================= Native Recorder (CPAL + WS) =================
+static STOP_TX: OnceLock<tokio::sync::Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+static REC_BUF: OnceLock<tokio::sync::Mutex<Vec<i16>>> = OnceLock::new();
+
 impl Default for AudioState {
     fn default() -> Self {
         Self {
@@ -70,6 +75,8 @@ pub fn run() {
     .manage(AudioState::default())
     .manage(WakeWordState::default())
     .setup(|app| {
+      // Ensure portal usage on Linux for permissions dialogs where applicable
+      std::env::set_var("GTK_USE_PORTAL", "1");
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
@@ -77,6 +84,16 @@ pub fn run() {
             .build(),
         )?;
       }
+      // Create logs window at startup
+      let _ = WebviewWindowBuilder::new(
+        app,
+        "logs",
+        WebviewUrl::App("index.html?window=logs".into()),
+      )
+      .title("SmartJARVIS Logs")
+      .resizable(true)
+      .inner_size(900.0, 600.0)
+      .build();
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -125,16 +142,250 @@ pub fn run() {
       save_audio_to_file,
       load_audio_from_file,
       create_websocket_client,
-      connect_websocket,
-      disconnect_websocket,
-      send_websocket_message,
       get_websocket_connection_state,
       get_websocket_reconnect_attempts,
       reset_websocket_reconnect_attempts,
-      get_websocket_last_heartbeat
+      get_websocket_last_heartbeat,
+      start_native_recording,
+      stop_native_recording,
+      probe_cpal_devices
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+// Удалено: открытие DevTools API в Tauri v2 делается через Devtools плагин/CLI
+
+// Start native microphone capture and stream PCM to Voice Gateway via WebSocket
+#[tauri::command]
+async fn start_native_recording() -> Result<String, String> {
+  eprintln!("start_native_recording: called");
+  let stop = STOP_TX.get_or_init(|| tokio::sync::Mutex::new(None));
+  let mut stop_guard = stop.lock().await;
+  if stop_guard.is_some() { eprintln!("start_native_recording: already running"); return Ok("Native recording already running".into()); }
+
+  let rec_buf = REC_BUF.get_or_init(|| tokio::sync::Mutex::new(Vec::with_capacity(16000*10)));
+  {
+    let mut b = rec_buf.lock().await;
+    b.clear();
+  }
+
+  let (tx_pcm, mut rx_pcm) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+  let (stop_tx, stop_rx) = mpsc::channel::<()>();
+  // Clone sender: one handle kept in global STOP_TX, another moved into thread
+  let stop_tx_store = stop_tx.clone();
+  let stop_tx_for_thread = stop_tx.clone();
+  let (tx_level, mut rx_level) = tokio::sync::mpsc::unbounded_channel::<f32>();
+
+  // WS forwarder (best-effort)
+  tokio::spawn(async move {
+    use tokio_tungstenite::{connect_async, tungstenite::Message};
+    let url = url::Url::parse("ws://localhost:8080/voice").unwrap();
+    match connect_async(url).await {
+      Ok((mut ws, _)) => {
+        eprintln!("WS: connected to voice gateway");
+        while let Some(pcm) = rx_pcm.recv().await {
+          if let Err(e) = ws.send(Message::Binary(pcm)).await { eprintln!("WS send error: {}", e); break; }
+        }
+        let _ = ws.close(None).await;
+      }
+      Err(e) => {
+        eprintln!("WS connect error: {}", e);
+        // drain but drop
+        while let Some(_pcm) = rx_pcm.recv().await { /* drop */ }
+      }
+    }
+  });
+
+  // Optional: stream level logs (can be consumed by UI later)
+  tokio::spawn(async move {
+    while let Some(level) = rx_level.recv().await {
+      eprintln!("Level: {:.3}", level);
+    }
+  });
+
+  // Spawn dedicated thread to own CPAL stream (avoid Send/Sync issues)
+  thread::spawn(move || {
+    eprintln!("CPAL thread: starting");
+    let host = cpal::default_host();
+    // Prefer a likely microphone device by name, otherwise fallback to default
+    let mut picked: Option<cpal::Device> = None;
+    if let Ok(mut iter) = host.input_devices() {
+      for dev in iter.by_ref() {
+        let name = dev.name().unwrap_or_default().to_lowercase();
+        if name.contains("mic") || name.contains("microphone") || name.contains("t1") || name.contains("c4k") || name.contains("usb") || name.contains("creative") {
+          picked = Some(dev);
+          break;
+        }
+      }
+    }
+    let device = if let Some(d) = picked { d } else {
+      match host.default_input_device() { Some(d) => d, None => { eprintln!("No input device available"); return; } }
+    };
+    eprintln!("Using input device: {}", device.name().unwrap_or("unknown".into()));
+    // Prefer 16k mono explicitly if supported
+    let supported = match device.supported_input_configs() {
+      Ok(iter) => iter.collect::<Vec<_>>(),
+      Err(e) => { eprintln!("supported_input_configs error: {}", e); return; }
+    };
+    let mut chosen: Option<cpal::SupportedStreamConfig> = None;
+    for cfg in supported {
+      let min = cfg.min_sample_rate().0;
+      let max = cfg.max_sample_rate().0;
+      if min <= 16000 && 16000 <= max {
+        chosen = Some(cfg.with_sample_rate(cpal::SampleRate(16000)));
+        break;
+      }
+    }
+    let config_any = if let Some(c) = chosen { c } else {
+      match device.default_input_config() { Ok(c) => c, Err(e) => { eprintln!("Failed to get input config: {}", e); return; } }
+    };
+    let channels = config_any.channels() as usize;
+    let sample_rate_hz: u32 = config_any.sample_rate().0;
+
+    // Simple VAD parameters
+    let vad_threshold: f32 = std::env::var("SJ_VAD_THRESHOLD").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.005);
+    let mut silence_ms: u64 = 0;
+    let max_silence_ms: u64 = std::env::var("SJ_VAD_SILENCE_MS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(600);
+
+    let result: Result<cpal::Stream, String> = match config_any.sample_format() {
+      cpal::SampleFormat::F32 => {
+        let tx = tx_pcm.clone();
+        let rec_buf = REC_BUF.get().unwrap();
+        let tx_level_inner = tx_level.clone();
+        let stop_tx_inner = stop_tx_for_thread.clone();
+        device.build_input_stream(&config_any.clone().into(), move |data: &[f32], _| {
+          let mut pcm = Vec::with_capacity(data.len()*2);
+          if channels==1 { for &s in data { let v=(s * i16::MAX as f32) as i16; pcm.extend_from_slice(&v.to_le_bytes()); } }
+          else { for frame in data.chunks(channels) { let avg = frame.iter().copied().sum::<f32>()/channels as f32; let v=(avg*i16::MAX as f32) as i16; pcm.extend_from_slice(&v.to_le_bytes()); } }
+          // VAD: compute RMS
+          let rms = if data.is_empty(){0.0}else{ (data.iter().map(|s| s*s).sum::<f32>()/data.len() as f32).sqrt() };
+          let _ = tx_level_inner.send(rms);
+          eprintln!("VAD f32 rms={:.5} silence_ms={} thr={:.5}", rms, silence_ms, vad_threshold);
+          let frame_ms = if sample_rate_hz > 0 { ((data.len()/channels) as u64 * 1000u64) / sample_rate_hz as u64 } else { 10 };
+          if rms < vad_threshold { silence_ms = silence_ms.saturating_add(frame_ms.max(1)); } else { silence_ms = 0; }
+          if silence_ms >= max_silence_ms { let _ = stop_tx_inner.send(()); return; }
+          {
+            let mut b = rec_buf.blocking_lock();
+            for chunk in pcm.chunks_exact(2) {
+              let v = i16::from_le_bytes([chunk[0], chunk[1]]);
+              b.push(v);
+              let max = 16000*10;
+              let current_len = b.len();
+              if current_len > max { let remove = current_len - max; b.drain(..remove); }
+            }
+          }
+          let _ = tx.send(pcm);
+        }, move |err| { eprintln!("cpal error: {}", err); }, None).map_err(|e| format!("stream: {}", e))
+      }
+      cpal::SampleFormat::I16 => {
+        let tx = tx_pcm.clone();
+        let rec_buf = REC_BUF.get().unwrap();
+        let tx_level_inner = tx_level.clone();
+        let stop_tx_inner = stop_tx_for_thread.clone();
+        device.build_input_stream(&config_any.clone().into(), move |data: &[i16], _| {
+          let mut pcm = Vec::with_capacity(data.len()*2);
+          if channels==1 { for &v in data { pcm.extend_from_slice(&v.to_le_bytes()); } }
+          else { for frame in data.chunks(channels) { let avg = frame.iter().copied().map(|x| x as i32).sum::<i32>()/channels as i32; let v=avg as i16; pcm.extend_from_slice(&v.to_le_bytes()); } }
+          let rms = if data.is_empty(){0.0}else{ let sum: i64 = data.iter().map(|&s| (s as i32).pow(2) as i64).sum(); ((sum as f32 / data.len() as f32).sqrt()) / i16::MAX as f32 };
+          let _ = tx_level_inner.send(rms);
+          eprintln!("VAD i16 rms={:.5} silence_ms={} thr={:.5}", rms, silence_ms, vad_threshold);
+          let frame_ms = if sample_rate_hz > 0 { ((data.len()/channels) as u64 * 1000u64) / sample_rate_hz as u64 } else { 10 };
+          if rms < vad_threshold { silence_ms = silence_ms.saturating_add(frame_ms.max(1)); } else { silence_ms = 0; }
+          if silence_ms >= max_silence_ms { let _ = stop_tx_inner.send(()); return; }
+          {
+            let mut b = rec_buf.blocking_lock();
+            for chunk in pcm.chunks_exact(2) {
+              let v = i16::from_le_bytes([chunk[0], chunk[1]]);
+              b.push(v);
+              let max = 16000*10;
+              let current_len = b.len();
+              if current_len > max { let remove = current_len - max; b.drain(..remove); }
+            }
+          }
+          let _ = tx.send(pcm);
+        }, move |err| { eprintln!("cpal error: {}", err); }, None).map_err(|e| format!("stream: {}", e))
+      }
+      cpal::SampleFormat::U16 => {
+        let tx = tx_pcm.clone();
+        let rec_buf = REC_BUF.get().unwrap();
+        let tx_level_inner = tx_level.clone();
+        let stop_tx_inner = stop_tx_for_thread.clone();
+        device.build_input_stream(&config_any.clone().into(), move |data: &[u16], _| {
+          let mut pcm = Vec::with_capacity(data.len()*2);
+          if channels==1 { for &v in data { let s=(v as i32 - 32768) as i16; pcm.extend_from_slice(&s.to_le_bytes()); } }
+          else { for frame in data.chunks(channels) { let avg = frame.iter().copied().map(|x| x as i32).sum::<i32>()/channels as i32; let s=(avg-32768) as i16; pcm.extend_from_slice(&s.to_le_bytes()); } }
+          let rms = if data.is_empty(){0.0}else{ let sum: i64 = data.iter().map(|&s| ((s as i32 - 32768).pow(2)) as i64).sum(); ((sum as f32 / data.len() as f32).sqrt()) / i16::MAX as f32 };
+          let _ = tx_level_inner.send(rms);
+          eprintln!("VAD u16 rms={:.5} silence_ms={} thr={:.5}", rms, silence_ms, vad_threshold);
+          let frame_ms = if sample_rate_hz > 0 { ((data.len()/channels) as u64 * 1000u64) / sample_rate_hz as u64 } else { 10 };
+          if rms < vad_threshold { silence_ms = silence_ms.saturating_add(frame_ms.max(1)); } else { silence_ms = 0; }
+          if silence_ms >= max_silence_ms { let _ = stop_tx_inner.send(()); return; }
+          {
+            let mut b = rec_buf.blocking_lock();
+            for chunk in pcm.chunks_exact(2) {
+              let v = i16::from_le_bytes([chunk[0], chunk[1]]);
+              b.push(v);
+              let max = 16000*10;
+              let current_len = b.len();
+              if current_len > max { let remove = current_len - max; b.drain(..remove); }
+            }
+          }
+          let _ = tx.send(pcm);
+        }, move |err| { eprintln!("cpal error: {}", err); }, None).map_err(|e| format!("stream: {}", e))
+      }
+      _ => Err("Unsupported sample format".into()),
+    };
+
+    match result {
+      Ok(stream) => {
+        if let Err(e) = stream.play() { eprintln!("stream play error: {}", e); return; }
+        eprintln!("CPAL: stream started");
+        // block until stop signal
+        let _ = stop_rx.recv();
+        drop(stream);
+        eprintln!("CPAL thread: stopped");
+      }
+      Err(e) => eprintln!("CPAL stream build error: {}", e),
+    }
+  });
+
+  *stop_guard = Some(stop_tx_store);
+  Ok("Native recording started".into())
+}
+
+#[tauri::command]
+async fn stop_native_recording() -> Result<String, String> {
+  eprintln!("stop_native_recording: called");
+  let mut msg = String::from("Native recording stopped");
+  if let Some(lock) = STOP_TX.get() {
+    let mut guard = lock.lock().await;
+    if let Some(tx) = guard.take() { let _ = tx.send(()); }
+  }
+  // Write short WAV to /tmp for verification
+  if let Some(buf_lock) = REC_BUF.get() {
+    let samples = { buf_lock.lock().await.clone() };
+    let path = "/tmp/sj_recording.wav";
+    if let Err(e) = write_wav_mono_16k(path, &samples).await {
+      eprintln!("write_wav error: {}", e);
+    } else {
+      eprintln!("Saved test recording: {} ({} samples)", path, samples.len());
+      msg = format!("{}; saved {} samples to {}", msg, samples.len(), path);
+    }
+  }
+  Ok(msg)
+}
+
+// helper: write mono 16-bit wav at 16k
+async fn write_wav_mono_16k(path: &str, samples: &[i16]) -> Result<(), String> {
+  let path_owned = path.to_string();
+  let samples_owned: Vec<i16> = samples.to_vec();
+  tokio::task::spawn_blocking(move || {
+    let spec = hound::WavSpec { channels: 1, sample_rate: 16000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+    let mut writer = hound::WavWriter::create(&path_owned, spec).map_err(|e| e.to_string())?;
+    for s in samples_owned { writer.write_sample(s).map_err(|e| e.to_string())?; }
+    writer.finalize().map_err(|e| e.to_string())
+  }).await.map_err(|e| format!("spawn error: {}", e))?
 }
 
 /// Выполнить PC команду
@@ -889,7 +1140,7 @@ async fn save_audio_to_file(samples: Vec<f32>, sample_rate: u32, channels: u16, 
 
 /// Загрузить аудио из файла
 #[tauri::command]
-async fn load_audio_from_file(filename: String, audio_state: State<'_, AudioState>) -> Result<AudioData, String> {
+async fn load_audio_from_file(_filename: String, audio_state: State<'_, AudioState>) -> Result<AudioData, String> {
     let initialized_guard = audio_state.initialized.lock().await;
     
     if *initialized_guard {
@@ -914,7 +1165,7 @@ async fn create_websocket_client(url: String) -> Result<String, String> {
         timeout: 10000,
     };
     
-    let client = websocket::WebSocketClient::new(config);
+    let _client = websocket::WebSocketClient::new(config);
     log::info!("WebSocket client created");
     Ok("WebSocket client created successfully".to_string())
 }
@@ -970,4 +1221,20 @@ async fn get_websocket_last_heartbeat() -> Result<u64, String> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64)
+}
+
+#[tauri::command]
+async fn probe_cpal_devices() -> Result<String, String> {
+  let host = cpal::default_host();
+  let default_in = host.default_input_device().map(|d| d.name().unwrap_or("unknown".into())).unwrap_or("<none>".into());
+  let mut names: Vec<String> = Vec::new();
+  match host.input_devices() {
+    Ok(mut iter) => {
+      for d in iter.by_ref() {
+        names.push(d.name().unwrap_or("unknown".into()));
+      }
+    }
+    Err(e) => return Err(format!("input_devices error: {}", e)),
+  }
+  Ok(format!("default: {}, inputs: {}", default_in, if names.is_empty() { "[]".into() } else { format!("{:?}", names) }))
 }

@@ -1,45 +1,69 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Скрипт для установки ярлыка SmartJARVIS
+echo "📎 Установка ярлыка SmartJARVIS..."
 
-echo "Установка ярлыка SmartJARVIS..."
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+LAUNCHER="$PROJECT_ROOT/scripts/open-desktop.sh"
+ICON_PATH="$PROJECT_ROOT/desktop/src-tauri/icons/icon.png"
+APP_NAME="SmartJARVIS"
+DESKTOP_ID="smartjarvis.desktop"
+APPS_DIR="$HOME/.local/share/applications"
+ICONS_DIR="$HOME/.local/share/icons/hicolor/128x128/apps"
+DESKTOP_FILE="$APPS_DIR/$DESKTOP_ID"
+DESKTOP_SHORTCUT="$HOME/Desktop/$APP_NAME.desktop"
 
-# Создаем директории если их нет
-mkdir -p ~/.local/share/applications
-mkdir -p ~/.local/share/icons/hicolor/scalable/apps
-mkdir -p ~/.local/share/icons/hicolor/256x256/apps
-mkdir -p ~/.local/share/icons/hicolor/128x128/apps
-mkdir -p ~/.local/share/icons/hicolor/64x64/apps
-mkdir -p ~/.local/share/icons/hicolor/48x48/apps
-mkdir -p ~/.local/share/icons/hicolor/32x32/apps
-mkdir -p ~/.local/share/icons/hicolor/16x16/apps
+# Проверки
+if [ ! -x "$LAUNCHER" ]; then
+  echo "⚠️  Делает исполняемым $LAUNCHER"
+  chmod +x "$LAUNCHER" || true
+fi
 
-# Копируем иконки
-echo "Копирование иконок..."
-cp icons/icon.png ~/.local/share/icons/hicolor/scalable/apps/smartjarvis-desktop.png
-cp icons/icon.png ~/.local/share/icons/hicolor/256x256/apps/smartjarvis-desktop.png
-cp icons/128x128.png ~/.local/share/icons/hicolor/128x128/apps/smartjarvis-desktop.png
-cp icons/128x128.png ~/.local/share/icons/hicolor/64x64/apps/smartjarvis-desktop.png
-cp icons/128x128.png ~/.local/share/icons/hicolor/48x48/apps/smartjarvis-desktop.png
-cp icons/32x32.png ~/.local/share/icons/hicolor/32x32/apps/smartjarvis-desktop.png
-cp icons/32x32.png ~/.local/share/icons/hicolor/16x16/apps/smartjarvis-desktop.png
+if [ ! -f "$ICON_PATH" ]; then
+  echo "⚠️  Иконка не найдена по пути $ICON_PATH. Будет использован стандартный значок.";
+  ICON_PATH=""
+fi
 
-# Копируем desktop файл
-echo "Копирование desktop файла..."
-cp ../../SmartJARVIS-installed.desktop ~/.local/share/applications/SmartJARVIS.desktop
+# Директории
+mkdir -p "$APPS_DIR" "$ICONS_DIR"
 
-# Обновляем базу данных приложений
-echo "Обновление базы данных приложений..."
-update-desktop-database ~/.local/share/applications/
+# Копируем иконку (если есть)
+if [ -n "$ICON_PATH" ]; then
+  cp "$ICON_PATH" "$ICONS_DIR/smartjarvis.png"
+  ICON_LINE="Icon=$ICONS_DIR/smartjarvis.png"
+else
+  ICON_LINE="Icon=utilities-terminal"
+fi
 
-# Обновляем кэш иконок
-echo "Обновление кэша иконок..."
-gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor/
+# Генерация .desktop файла
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=$APP_NAME
+Comment=Персональный ассистент SmartJARVIS (Desktop)
+Exec=$LAUNCHER
+$ICON_LINE
+Terminal=false
+StartupNotify=true
+Categories=Utility;AudioVideo;Network;
+Keywords=assistant;voice;ai;jarvis;smart;desktop;
+EOF
 
-# Создаем ярлык на рабочем столе
-echo "Создание ярлыка на рабочем столе..."
-cp ../../SmartJARVIS-installed.desktop ~/Desktop/SmartJARVIS.desktop
-chmod +x ~/Desktop/SmartJARVIS.desktop
+chmod +x "$DESKTOP_FILE"
 
-echo "Ярлык SmartJARVIS успешно установлен!"
-echo "Приложение должно появиться в меню приложений и на рабочем столе."
+# Обновляем базы
+update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor/" >/dev/null 2>&1 || true
+
+# Ярлык на рабочем столе
+cp "$DESKTOP_FILE" "$DESKTOP_SHORTCUT"
+chmod +x "$DESKTOP_SHORTCUT"
+
+# Отметить ярлык как доверенный (Ubuntu/GNOME)
+gio set "$DESKTOP_SHORTCUT" metadata::trusted true >/dev/null 2>&1 || true
+xdg-desktop-menu forceupdate >/dev/null 2>&1 || true
+
+echo "✅ Ярлык установлен:"
+echo "   • Меню приложений: $DESKTOP_FILE"
+echo "   • Рабочий стол:    $DESKTOP_SHORTCUT"

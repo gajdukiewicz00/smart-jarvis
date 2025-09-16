@@ -1,0 +1,40 @@
+{
+  "namespace": "com.smartjarvis.events.common",
+  "type": "record",
+  "name": "AudioData",
+  "doc": "Аудио данные для голосовых событий",
+  "fields": [
+    {
+      "name": "audioBytes",
+      "type": "bytes",
+      "doc": "Аудио данные в байтах"
+    },
+    {
+      "name": "sampleRate",
+      "type": "int",
+      "doc": "Частота дискретизации (Гц)"
+    },
+    {
+      "name": "channels",
+      "type": "int",
+      "doc": "Количество каналов"
+    },
+    {
+      "name": "bitDepth",
+      "type": "int",
+      "doc": "Разрядность аудио"
+    },
+    {
+      "name": "duration",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Длительность аудио в секундах"
+    },
+    {
+      "name": "format",
+      "type": "string",
+      "default": "PCM",
+      "doc": "Формат аудио данных"
+    }
+  ]
+}

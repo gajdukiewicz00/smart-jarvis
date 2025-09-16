@@ -1,0 +1,71 @@
+{
+  "namespace": "com.smartjarvis.events.voice",
+  "type": "record",
+  "name": "IntentRecognizedEvent",
+  "doc": "Событие распознавания намерения",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "intent",
+      "type": "string",
+      "doc": "Распознанное намерение"
+    },
+    {
+      "name": "confidence",
+      "type": "double",
+      "doc": "Уверенность в намерении (0.0-1.0)"
+    },
+    {
+      "name": "entities",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Entity",
+          "fields": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "Название сущности"
+            },
+            {
+              "name": "value",
+              "type": "string",
+              "doc": "Значение сущности"
+            },
+            {
+              "name": "confidence",
+              "type": "double",
+              "doc": "Уверенность в сущности"
+            },
+            {
+              "name": "startIndex",
+              "type": "int",
+              "doc": "Начальный индекс в тексте"
+            },
+            {
+              "name": "endIndex",
+              "type": "int",
+              "doc": "Конечный индекс в тексте"
+            }
+          ]
+        }
+      },
+      "doc": "Извлеченные сущности"
+    },
+    {
+      "name": "originalText",
+      "type": "string",
+      "doc": "Исходный текст"
+    },
+    {
+      "name": "processingTimeMs",
+      "type": "long",
+      "doc": "Время обработки в миллисекундах"
+    }
+  ]
+}

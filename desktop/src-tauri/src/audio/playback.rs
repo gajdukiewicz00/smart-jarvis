@@ -1,5 +1,5 @@
 use super::{AudioConfig, AudioData};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::{Device, SampleFormat, SampleRate, Stream, StreamConfig};
 use std::sync::Arc;
 use anyhow::Result;

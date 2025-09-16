@@ -1,0 +1,67 @@
+{
+  "namespace": "com.smartjarvis.events.voice",
+  "type": "record",
+  "name": "ResponseGeneratedEvent",
+  "doc": "Событие генерации ответа",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "responseText",
+      "type": "string",
+      "doc": "Текст ответа"
+    },
+    {
+      "name": "responseType",
+      "type": {
+        "type": "enum",
+        "name": "ResponseType",
+        "symbols": ["TEXT", "AUDIO", "ACTION", "CONFIRMATION", "ERROR"]
+      },
+      "doc": "Тип ответа"
+    },
+    {
+      "name": "actions",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "Action",
+          "fields": [
+            {
+              "name": "actionType",
+              "type": "string",
+              "doc": "Тип действия"
+            },
+            {
+              "name": "parameters",
+              "type": "map",
+              "values": "string",
+              "doc": "Параметры действия"
+            },
+            {
+              "name": "status",
+              "type": {
+                "type": "enum",
+                "name": "ActionStatus",
+                "symbols": ["PENDING", "EXECUTING", "COMPLETED", "FAILED"]
+              },
+              "default": "PENDING",
+              "doc": "Статус выполнения действия"
+            }
+          ]
+        }
+      },
+      "default": [],
+      "doc": "Список действий для выполнения"
+    },
+    {
+      "name": "processingTimeMs",
+      "type": "long",
+      "doc": "Время обработки в миллисекундах"
+    }
+  ]
+}
