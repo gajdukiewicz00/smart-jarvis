@@ -1,0 +1,47 @@
+list:
+- command:
+    action: cli
+    cli_cmd: xdg-open
+    cli_args:
+    - http://google.com
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+  phrases:
+  - открой браузер
+  - открой гугл
+  - гугл
+
+- command:
+    action: cli
+    cli_cmd: xdg-open
+    cli_args:
+    - http://youtube.com
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+    - ok4
+  phrases:
+  - открой ютуб
+  - ютуб
+  - запусти ютуб
+
+- command:
+    action: cli
+    cli_cmd: xdg-open
+    cli_args:
+    - http://github.com
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+    - ok4
+  phrases:
+  - открой гитхаб
+  - гитхаб
+  - запусти гитхаб

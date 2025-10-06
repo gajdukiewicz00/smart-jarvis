@@ -5,6 +5,21 @@ mod auth;
 mod websocket;
 mod audio;
 
+// Интеграция из Priler/jarvis проекта
+mod config;
+mod commands;
+mod stt;
+mod listener;
+mod recorder;
+mod tray;
+
+// Импорты для новых модулей
+use config::{WakeWordEngine, SpeechToTextEngine, RecorderType, AudioType};
+use commands::{AssistantCommand, Config as CommandConfig};
+use stt::{recognize as stt_recognize};
+use listener::{data_callback as wake_word_callback};
+use recorder::{start_recording as recorder_start, stop_recording as recorder_stop, is_recording as recorder_is_recording};
+
 use pc::{PcCommand, PcCommandResult};
 use pc::file_system::execute_file_system_command;
 use pc::process_manager::execute_process_command;
@@ -36,6 +51,8 @@ use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use futures_util::SinkExt;
 use std::sync::mpsc;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::Emitter;
+use serde::Serialize;
 
 // Простое состояние для аудио системы (без cpal потоков)
 pub struct AudioState {
@@ -59,6 +76,13 @@ impl Default for WakeWordState {
 // ================= Native Recorder (CPAL + WS) =================
 static STOP_TX: OnceLock<tokio::sync::Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
 static REC_BUF: OnceLock<tokio::sync::Mutex<Vec<i16>>> = OnceLock::new();
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+#[derive(Serialize, Clone, Copy)]
+struct VadLevelEvent {
+  rms: f32,
+  speech: bool,
+}
 
 impl Default for AudioState {
     fn default() -> Self {
@@ -77,6 +101,7 @@ pub fn run() {
     .setup(|app| {
       // Ensure portal usage on Linux for permissions dialogs where applicable
       std::env::set_var("GTK_USE_PORTAL", "1");
+      let _ = APP_HANDLE.set(app.handle().clone());
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
@@ -115,12 +140,29 @@ pub fn run() {
       calendar_create_event,
       memory_create_entry,
       memory_search,
-      // Wake Word Detection
+      // Wake Word Detection (интегрировано из Priler/jarvis)
       create_wake_word_detector,
       start_wake_word_detection,
       stop_wake_word_detection,
       get_wake_word_status,
       update_wake_word_config,
+      // Командная система (интегрировано из Priler/jarvis)
+      parse_commands,
+      execute_command,
+      fetch_command,
+      // Аудио система (интегрировано из Priler/jarvis)
+      // init_audio_system, // временно отключено
+      start_audio_capture,
+      stop_audio_capture,
+      get_audio_devices,
+      // STT система (интегрировано из Priler/jarvis)
+      init_stt_system,
+      recognize_speech,
+      // Запись аудио (интегрировано из Priler/jarvis)
+      init_recorder,
+      start_recording,
+      stop_recording,
+      is_recording,
       // Аутентификация
       login_user,
       register_user,
@@ -261,6 +303,13 @@ async fn start_native_recording() -> Result<String, String> {
           // VAD: compute RMS
           let rms = if data.is_empty(){0.0}else{ (data.iter().map(|s| s*s).sum::<f32>()/data.len() as f32).sqrt() };
           let _ = tx_level_inner.send(rms);
+          if let Some(h) = APP_HANDLE.get() { 
+            let result = h.emit("vad-level", serde_json::json!({
+                "rms": rms,
+                "speech": silence_ms == 0
+            })); 
+            eprintln!("VAD event sent: rms={:.5} speech={} result={:?}", rms, silence_ms==0, result);
+          }
           eprintln!("VAD f32 rms={:.5} silence_ms={} thr={:.5}", rms, silence_ms, vad_threshold);
           let frame_ms = if sample_rate_hz > 0 { ((data.len()/channels) as u64 * 1000u64) / sample_rate_hz as u64 } else { 10 };
           if rms < vad_threshold { silence_ms = silence_ms.saturating_add(frame_ms.max(1)); } else { silence_ms = 0; }
@@ -289,6 +338,13 @@ async fn start_native_recording() -> Result<String, String> {
           else { for frame in data.chunks(channels) { let avg = frame.iter().copied().map(|x| x as i32).sum::<i32>()/channels as i32; let v=avg as i16; pcm.extend_from_slice(&v.to_le_bytes()); } }
           let rms = if data.is_empty(){0.0}else{ let sum: i64 = data.iter().map(|&s| (s as i32).pow(2) as i64).sum(); ((sum as f32 / data.len() as f32).sqrt()) / i16::MAX as f32 };
           let _ = tx_level_inner.send(rms);
+          if let Some(h) = APP_HANDLE.get() { 
+            let result = h.emit("vad-level", serde_json::json!({
+                "rms": rms,
+                "speech": silence_ms == 0
+            })); 
+            eprintln!("VAD event sent: rms={:.5} speech={} result={:?}", rms, silence_ms==0, result);
+          }
           eprintln!("VAD i16 rms={:.5} silence_ms={} thr={:.5}", rms, silence_ms, vad_threshold);
           let frame_ms = if sample_rate_hz > 0 { ((data.len()/channels) as u64 * 1000u64) / sample_rate_hz as u64 } else { 10 };
           if rms < vad_threshold { silence_ms = silence_ms.saturating_add(frame_ms.max(1)); } else { silence_ms = 0; }
@@ -317,6 +373,13 @@ async fn start_native_recording() -> Result<String, String> {
           else { for frame in data.chunks(channels) { let avg = frame.iter().copied().map(|x| x as i32).sum::<i32>()/channels as i32; let s=(avg-32768) as i16; pcm.extend_from_slice(&s.to_le_bytes()); } }
           let rms = if data.is_empty(){0.0}else{ let sum: i64 = data.iter().map(|&s| ((s as i32 - 32768).pow(2)) as i64).sum(); ((sum as f32 / data.len() as f32).sqrt()) / i16::MAX as f32 };
           let _ = tx_level_inner.send(rms);
+          if let Some(h) = APP_HANDLE.get() { 
+            let result = h.emit("vad-level", serde_json::json!({
+                "rms": rms,
+                "speech": silence_ms == 0
+            })); 
+            eprintln!("VAD event sent: rms={:.5} speech={} result={:?}", rms, silence_ms==0, result);
+          }
           eprintln!("VAD u16 rms={:.5} silence_ms={} thr={:.5}", rms, silence_ms, vad_threshold);
           let frame_ms = if sample_rate_hz > 0 { ((data.len()/channels) as u64 * 1000u64) / sample_rate_hz as u64 } else { 10 };
           if rms < vad_threshold { silence_ms = silence_ms.saturating_add(frame_ms.max(1)); } else { silence_ms = 0; }
@@ -1238,3 +1301,81 @@ async fn probe_cpal_devices() -> Result<String, String> {
   }
   Ok(format!("default: {}, inputs: {}", default_in, if names.is_empty() { "[]".into() } else { format!("{:?}", names) }))
 }
+
+// ===== НОВЫЕ КОМАНДЫ ИЗ PRILER/JARVIS =====
+
+// Командная система
+#[tauri::command]
+async fn parse_commands() -> Result<String, String> {
+    match commands::parse_commands() {
+        Ok(commands) => Ok(format!("Parsed {} commands", commands.len())),
+        Err(e) => Err(format!("Failed to parse commands: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn execute_command(command_path: String, command_config: CommandConfig) -> Result<String, String> {
+    let path = std::path::PathBuf::from(command_path);
+    match commands::execute_command(&path, &command_config) {
+        Ok(success) => Ok(format!("Command executed: {}", success)),
+        Err(e) => Err(format!("Failed to execute command: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn fetch_command(phrase: String, commands: Vec<AssistantCommand>) -> Result<String, String> {
+    match commands::fetch_command(&phrase, &commands) {
+        Some((path, config)) => Ok(format!("Found command: {:?} -> {:?}", path, config)),
+        None => Err("No matching command found".to_string()),
+    }
+}
+
+// STT система
+#[tauri::command]
+async fn init_stt_system() -> Result<String, String> {
+    match stt::init() {
+        Ok(_) => Ok("STT system initialized".to_string()),
+        Err(_) => Err("Failed to initialize STT system".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn recognize_speech(audio_data: Vec<i16>, partial: bool) -> Result<String, String> {
+    match stt_recognize(&audio_data, partial) {
+        Some(text) => Ok(text),
+        None => Err("No speech recognized".to_string()),
+    }
+}
+
+// Система записи
+#[tauri::command]
+async fn init_recorder() -> Result<String, String> {
+    match recorder::init() {
+        Ok(_) => Ok("Recorder initialized".to_string()),
+        Err(_) => Err("Failed to initialize recorder".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn start_recording() -> Result<String, String> {
+    match recorder_start() {
+        Ok(_) => Ok("Recording started".to_string()),
+        Err(e) => Err(format!("Failed to start recording: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn stop_recording() -> Result<String, String> {
+    match recorder_stop() {
+        Ok(_) => Ok("Recording stopped".to_string()),
+        Err(e) => Err(format!("Failed to stop recording: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn is_recording() -> bool {
+    recorder_is_recording()
+}
+
+// Wake word система (уже есть)
+// Аудио система (уже есть)

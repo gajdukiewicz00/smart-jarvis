@@ -1,0 +1,14 @@
+list:
+- command:
+    action: terminate
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+  phrases:
+  - остановись
+  - хватит
+  - стоп
+  - завершить работу
+  - выход
