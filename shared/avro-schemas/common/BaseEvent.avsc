@@ -1,0 +1,51 @@
+{
+  "namespace": "com.smartjarvis.events.common",
+  "type": "record",
+  "name": "BaseEvent",
+  "doc": "Базовое событие для всех событий SmartJARVIS",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Уникальный идентификатор события"
+    },
+    {
+      "name": "correlationId",
+      "type": "string",
+      "doc": "Идентификатор корреляции для трассировки"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "Идентификатор пользователя"
+    },
+    {
+      "name": "sessionId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Идентификатор сессии"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Временная метка события в миллисекундах"
+    },
+    {
+      "name": "eventType",
+      "type": "string",
+      "doc": "Тип события"
+    },
+    {
+      "name": "version",
+      "type": "string",
+      "default": "1.0",
+      "doc": "Версия схемы события"
+    },
+    {
+      "name": "metadata",
+      "type": ["null", {"type": "map", "values": "string"}],
+      "default": null,
+      "doc": "Дополнительные метаданные события"
+    }
+  ]
+}

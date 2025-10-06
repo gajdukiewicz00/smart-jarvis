@@ -1,0 +1,143 @@
+spring:
+  application:
+    name: device-agent
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  # Kafka configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    schema-registry:
+      url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    consumer:
+      group-id: device-agent
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        specific.avro.reader: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        acks: all
+        retries: 3
+        enable.idempotence: true
+
+# Server configuration
+server:
+  port: ${SERVER_PORT:8087}
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      service: device-agent
+
+# Logging
+logging:
+  level:
+    com.smartjarvis: ${LOG_LEVEL:INFO}
+    org.springframework.kafka: WARN
+
+# Device Agent Security Configuration
+smartjarvis:
+  device-agent:
+    security:
+      enabled: true
+      max-volume: 100
+      screenshot-path: "/tmp/smartjarvis/screenshots"
+      allowed-apps:
+        - "code"
+        - "vscode"
+        - "firefox"
+        - "chrome"
+        - "google-chrome"
+        - "terminal"
+        - "gnome-terminal"
+        - "files"
+        - "nautilus"
+        - "calculator"
+        - "gnome-calculator"
+        - "settings"
+        - "gnome-control-center"
+      allowed-volume-commands:
+        - "pactl"
+        - "amixer"
+      allowed-media-actions:
+        - "play"
+        - "pause"
+        - "play-pause"
+        - "next"
+        - "previous"
+        - "stop"
+      allowed-system-commands:
+        - "gnome-screenshot"
+        - "scrot"
+        - "import"
+        - "gnome-screensaver-command"
+        - "loginctl"
+        - "dm-tool"
+        - "xdg-screensaver"
+        - "xdg-open"
+        - "gtk-launch"
+        - "uname"
+        - "lsb_release"
+        - "cat"
+        - "playerctl"
+      forbidden-commands:
+        - "rm"
+        - "sudo"
+        - "chmod"
+        - "systemctl"
+        - "killall"
+        - "passwd"
+        - "iptables"
+        - "crontab"
+
+---
+# Docker profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  kafka:
+    bootstrap-servers: kafka:29092
+    schema-registry:
+      url: http://schema-registry:8081
+
+# In Docker, we need to bind to host system
+smartjarvis:
+  device-agent:
+    security:
+      screenshot-path: "/host/tmp/smartjarvis/screenshots"
+
+---
+# Test profile
+spring:
+  config:
+    activate:
+      on-profile: test
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+
+smartjarvis:
+  device-agent:
+    security:
+      enabled: false  # Disable security for tests
+
+logging:
+  level:
+    com.smartjarvis: DEBUG

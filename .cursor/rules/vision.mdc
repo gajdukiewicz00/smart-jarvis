@@ -1,0 +1,650 @@
+---
+alwaysApply: true
+---
+## 1. Архитектурные принципы
+
+### ПОЛНАЯ МИКРОСЕРВИСНОСТЬ
+- **КАЖДАЯ ФУНКЦИЯ = ОТДЕЛЬНЫЙ СЕРВИС** — NO монолиты, NO shared libraries с бизнес-логикой
+- **Один сервис = одна доменная область** (todo, calendar, device-agent)
+- **Event-driven через Kafka** — все взаимодействие асинхронное
+- **CQRS** — команды и запросы разделены
+- **Hexagonal Architecture** — бизнес-логика изолирована от инфраструктуры
+
+---
+## 2. Принципы разработки
+
+### Clean Code & SOLID
+- **Single Responsibility** - каждый сервис отвечает за одну доменную область
+- **Open/Closed** - расширение через плагины и skills
+- **Dependency Inversion** - зависимости через интерфейсы
+- **Interface Segregation** - узкие, специализированные интерфейсы
+
+### Архитектурные принципы
+- **ПОЛНАЯ МИКРОСЕРВИСНОСТЬ** - каждая функция = отдельный сервис, NO монолиты
+- **Event-Driven Architecture** - асинхронная обработка через Kafka
+- **CQRS** - разделение команд и запросов
+- **Domain-Driven Design** - доменная модель в центре
+- **Hexagonal Architecture** - изоляция бизнес-логики
+
+### Качество кода
+- **TDD** - тесты пишутся до кода
+- **Code Review** - все изменения проходят ревью
+- **Static Analysis** - SonarQube, SpotBugs, PMD
+- **Conventional Commits** - структурированные коммиты
+- **NO УПРОЩЕНИЙ** - весь код должен быть полноценным и функциональным, никаких placeholder'ов или упрощенных реализаций
+
+---
+
+## 3. Структура проекта
+
+### Монорепо организация
+```
+smart-jarvis/
+├── desktop/              # Tauri Desktop App (Windows/Linux)
+│   ├── src-tauri/        # Rust backend + PC integration
+│   ├── src/              # React frontend
+│   └── Cargo.toml
+├── mobile/               # Flutter Mobile App (Android)
+│   ├── lib/              # Dart code
+│   ├── android/          # Android specific
+│   └── pubspec.yaml
+├── services/             # Java Microservices (Backend)
+│   ├── voice-gateway/    # WebSocket + HTTP gateway
+│   ├── stt-service/      # Speech-to-Text (Java + Whisper)
+│   ├── nlu-service/      # Natural Language Understanding
+│   ├── dm-service/       # Dialog Management
+│   ├── tts-service/      # Text-to-Speech (Java + Piper)
+│   ├── todo-service/     # Task management
+│   ├── money-service/    # Finance tracking
+│   ├── calendar-service/ # Calendar management
+│   ├── memory-service/   # Context memory
+│   ├── device-agent/     # PC control (Java wrapper)
+│   ├── home-bridge/      # Home Assistant bridge
+│   └── api-gateway/      # HTTP/gRPC API Gateway
+├── shared/               # Общие библиотеки
+│   ├── avro-schemas/     # Avro схемы для Kafka
+│   ├── java-common/      # Java утилиты
+│   ├── rust-common/      # Rust утилиты
+│   └── flutter-common/   # Flutter утилиты
+├── infrastructure/       # Docker, K8s, мониторинг
+│   ├── docker/          # Docker Compose
+│   ├── kubernetes/      # K8s манифесты
+│   └── monitoring/      # Prometheus, Grafana
+├── docs/                # Документация
+└── scripts/             # Автоматизация
+```
+
+### Структура сервиса
+```
+service-name/
+├── src/
+│   ├── main/
+│   │   ├── java/      # Java код
+│   │   ├── resources/  # Конфигурации
+│   │   └── avro/      # Avro схемы
+│   └── test/          # Тесты
+├── Dockerfile
+├── pom.xml
+└── README.md
+```
+
+---
+
+## 4. Архитектура системы
+
+### Высокоуровневая архитектура
+```
+┌─────────────────┐    ┌─────────────────┐
+│   Tauri App     │    │  Flutter App    │
+│   (Desktop)     │    │   (Mobile)      │
+└─────────┬───────┘    └─────────┬───────┘
+          │                      │
+          │ HTTP/gRPC            │ HTTP/gRPC
+          │                      │
+┌─────────▼───────┐    ┌─────────▼───────┐
+│  Java Services  │    │  Java Services  │
+│  (Local Server)│    │  (Local Server)│
+└─────────┬───────┘    └─────────┬───────┘
+          │                      │
+          │ Kafka                 │ Kafka
+          │                      │
+┌─────────▼───────┐    ┌─────────▼───────┐
+│  PC Integration │    │  PC Integration │
+│  (Rust in Tauri)│   │  (Java wrapper) │
+└─────────────────┘    └─────────────────┘
+```
+
+### Микросервисы и их ответственности
+
+**Voice Gateway**
+- WebSocket соединения
+- Аудио поток
+- Barge-in обработка
+- Маршрутизация событий
+
+**STT Service**
+- Whisper CT2 интеграция
+- Аудио → текст
+- Streaming STT
+- VAD (Voice Activity Detection)
+
+**NLU Service**
+- Intent recognition
+- Entity extraction
+- Slot filling
+- Context understanding
+
+**DM Service**
+- Dialog state management
+- Decision making
+- Context tracking
+- Response planning
+
+**TTS Service**
+- Piper/Edge-TTS интеграция
+- SSML поддержка
+- Voice profiles
+- Streaming TTS
+
+**Domain Services**
+- Todo, Money, Calendar
+- CRUD операции
+- Бизнес-логика
+- Валидация
+
+**Agent Services**
+- Device Agent (PC control)
+- Home Bridge (HA integration)
+- Action execution
+- Safety checks
+
+**Desktop Application (Tauri)**
+- Rust backend с встроенной PC интеграцией
+- React frontend для пользовательского интерфейса
+- HTTP/gRPC клиент для коммуникации с Java сервисами
+- Wake word detection (локальный + облачный)
+- Прямые системные вызовы (файлы, процессы, настройки)
+
+**Mobile Application (Flutter)**
+- Dart код для кроссплатформенности
+- Material Design 3 UI
+- HTTP клиент для подключения к Java сервисам
+- Голосовые команды и ответы
+- Упрощенная функциональность (без PC интеграции)
+
+**PC Integration (встроенная в Tauri)**
+- Системные вызовы через Rust FFI
+- Управление файловой системой
+- Управление процессами и приложениями
+- Системные настройки и конфигурации
+- Сетевые функции и мониторинг
+
+### Потоки данных
+
+**Desktop поток:**
+1. Wake Word Detection → Tauri App
+2. Audio → Voice Gateway (via HTTP/gRPC)
+3. Gateway → STT Service (via Kafka)
+4. STT → NLU Service
+5. NLU → DM Service
+6. DM → Domain/Agent Services
+7. Services → Tauri Rust backend (системные вызовы)
+8. Services → TTS Service
+9. TTS → Gateway → Tauri App → User
+
+**Mobile поток:**
+1. Audio → Flutter App
+2. App → Java Services (via HTTP)
+3. Services → STT/NLU/DM/TTS
+4. Response → Flutter App → User
+
+**Event Stream:**
+- Все события публикуются в Kafka
+- HTTP/gRPC подписки на события
+- Real-time обновления в приложениях
+
+---
+
+## 5. Модель данных
+
+### PostgreSQL (структурированные данные)
+```sql
+-- Users and authentication
+users (id, username, email, created_at)
+sessions (id, user_id, token, expires_at)
+
+-- Audit and logging
+audit_logs (id, user_id, action, resource, timestamp)
+```
+
+### MongoDB (документные данные)
+```javascript
+// Tasks
+{
+  _id: ObjectId,
+  userId: String,
+  title: String,
+  description: String,
+  dueDate: Date,
+  status: String,
+  priority: Number,
+  createdAt: Date,
+  updatedAt: Date
+}
+
+// Calendar events
+{
+  _id: ObjectId,
+  userId: String,
+  title: String,
+  startTime: Date,
+  endTime: Date,
+  location: String,
+  attendees: [String],
+  reminders: [Object]
+}
+
+// Memory/Context
+{
+  _id: ObjectId,
+  userId: String,
+  sessionId: String,
+  context: String,
+  entities: [Object],
+  embeddings: [Number],
+  timestamp: Date
+}
+```
+
+### Avro схемы
+```json
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "AudioIncomingEvent",
+  "fields": [
+    {"name": "sessionId", "type": "string"},
+    {"name": "userId", "type": "string"},
+    {"name": "audioData", "type": "bytes"},
+    {"name": "timestamp", "type": "long"}
+  ]
+}
+```
+
+---
+
+## 6. Работа с LLM
+
+### Интеграция подходов
+- **V1**: Rule-based NLU + простые промпты
+- **V2**: Hybrid (rules + small LLM)
+- **V3**: Full LLM integration
+
+### Режимы работы
+- **Офлайн режим**: полная локальная обработка (Whisper, Piper, локальный LLM)
+- **Онлайн режим**: облачные сервисы для сложных задач (OpenAI, Azure, Google)
+- **Гибридный режим**: автоматическое переключение между режимами
+- **Wake Word**: локальный Porcupine + облачный резерв
+
+### Промпт инженерия
+```yaml
+# persona.yaml
+system_prompt: |
+  Ты - SmartJARVIS, персональный ассистент. 
+  Тон: вежливый, четкий, с легкой самоиронией.
+  Не давай моральных советов, не спори, не придумывай факты.
+  
+response_templates:
+  acknowledgment: "К вашим услугам"
+  executing: "Исполняю"
+  processing: "Мгновение..."
+  completed: "Готово"
+```
+
+### Контекст и память
+- **Session Context**: текущая сессия
+- **User Memory**: долгосрочная память пользователя
+- **Domain Context**: контекст доменов (todo, calendar)
+- **Conversation History**: история диалогов
+
+### Безопасность LLM
+- **Input Sanitization**: очистка пользовательского ввода
+- **Output Validation**: проверка ответов LLM
+- **Rate Limiting**: ограничение запросов
+- **Content Filtering**: фильтрация нежелательного контента
+
+---
+
+## 7. Мониторинг и наблюдаемость
+
+### Метрики (Prometheus)
+```yaml
+# Voice Pipeline Metrics
+voice_pipeline_latency_seconds
+voice_pipeline_throughput_total
+stt_accuracy_percentage
+nlu_intent_recognition_accuracy
+tts_generation_time_seconds
+
+# Business Metrics
+tasks_created_total
+calendar_events_scheduled_total
+device_commands_executed_total
+home_automation_triggers_total
+
+# System Metrics
+kafka_lag_seconds
+database_connection_pool_size
+memory_usage_bytes
+cpu_usage_percentage
+```
+
+### Логирование
+```json
+{
+  "timestamp": "2025-01-09T10:30:00Z",
+  "level": "INFO",
+  "service": "voice-gateway",
+  "correlationId": "req-123",
+  "userId": "user-456",
+  "sessionId": "session-789",
+  "message": "Audio received",
+  "metadata": {
+    "audioSize": 1024,
+    "duration": 1.5
+  }
+}
+```
+
+### Трассировка (OpenTelemetry)
+- **Distributed Tracing**: сквозная трассировка запросов
+- **Span Attributes**: контекстная информация
+- **Baggage**: передача контекста между сервисами
+- **Sampling**: адаптивная выборка для производительности
+
+### Дашборды (Grafana)
+- **Voice Pipeline**: латентность, точность, throughput
+- **System Health**: ресурсы, ошибки, доступность
+- **Business KPIs**: пользовательская активность
+- **Kafka Monitoring**: lag, throughput, ошибки
+
+---
+
+## 8. Сценарии работы
+
+### Основные пользовательские флоу
+
+**1. Простая команда**
+```
+User: "Джарвис, добавь задачу позвонить маме завтра в 10"
+Flow: Wake-word → STT → NLU → DM → Todo Service → TTS → Response
+```
+
+**2. Комплексная команда**
+```
+User: "Подготовься к совещанию: собери задачи на сегодня, включи сцену фокус"
+Flow: STT → NLU → DM → Planner → Multiple Services → TTS → Response
+```
+
+**3. Barge-in сценарий**
+```
+User: "Джарвис, включи музыку"
+TTS: "Включаю музыку в гостиной..."
+User: "Стоп, сделай тише"
+Flow: Barge-in detection → TTS stop → New command processing
+```
+
+### Edge Cases
+- **Неточное распознавание**: fallback к push-to-talk
+- **Сетевые проблемы**: локальный кэш команд
+- **Высокая нагрузка**: graceful degradation
+- **Ошибки сервисов**: circuit breaker pattern
+
+---
+
+## 9. Деплой и инфраструктура
+
+### Docker Compose (локальная разработка)
+```yaml
+version: '3.8'
+services:
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+  
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: smartjarvis
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: secret
+  
+  redis:
+    image: redis:7-alpine
+  
+  # Services...
+```
+
+### CI/CD Pipeline
+```yaml
+# .github/workflows/ci.yml
+name: CI/CD
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: make test
+      - name: Build images
+        run: make build
+      - name: Deploy to staging
+        run: make deploy-staging
+```
+
+### Окружения
+- **Development**: локальный Docker Compose
+- **Staging**: Kubernetes cluster
+- **Production**: Kubernetes с мониторингом
+
+---
+
+## 10. Конфигурирование
+
+### Переменные окружения
+```bash
+# Database
+DATABASE_URL=postgresql://jarvis:secret@localhost:5432/smartjarvis
+MONGODB_URL=mongodb://localhost:27017/smartjarvis
+
+# Kafka
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+SCHEMA_REGISTRY_URL=http://localhost:8081
+
+# Services
+STT_MODEL_PATH=/models/whisper-small
+TTS_VOICE_PATH=/models/piper-voice
+NLU_RULES_PATH=/config/nlu-rules.yaml
+
+# Security
+JWT_SECRET=your-secret-key
+ENCRYPTION_KEY=your-encryption-key
+```
+
+### Профили конфигурации
+```yaml
+# application-dev.yml
+spring:
+  profiles:
+    active: dev
+  datasource:
+    url: ${DATABASE_URL}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+# application-prod.yml
+spring:
+  profiles:
+    active: prod
+  datasource:
+    url: ${DATABASE_URL}
+    hikari:
+      maximum-pool-size: 20
+```
+
+---
+
+## 11. Логгирование
+
+### Структура логов
+```json
+{
+  "timestamp": "2025-01-09T10:30:00.000Z",
+  "level": "INFO",
+  "logger": "com.smartjarvis.voicegateway.AudioHandler",
+  "message": "Audio chunk processed",
+  "correlationId": "req-123",
+  "userId": "user-456",
+  "sessionId": "session-789",
+  "metadata": {
+    "chunkSize": 1024,
+    "processingTimeMs": 150,
+    "audioFormat": "pcm_16khz"
+  }
+}
+```
+
+### Уровни логирования
+- **ERROR**: критические ошибки, требующие внимания
+- **WARN**: предупреждения, потенциальные проблемы
+- **INFO**: важные события, бизнес-логика
+- **DEBUG**: детальная отладочная информация
+- **TRACE**: максимальная детализация
+
+### PII и безопасность
+- **PII Redaction**: автоматическое удаление персональных данных
+- **Sensitive Data**: маскирование паролей, токенов
+- **Audit Logs**: отдельные логи для аудита
+- **Retention Policy**: политика хранения логов
+
+---
+
+## 12. Безопасность
+
+### Аутентификация и авторизация
+```java
+@RestController
+@PreAuthorize("hasRole('USER')")
+public class TodoController {
+    
+    @PostMapping("/todos")
+    @PreAuthorize("@securityService.canCreateTodo(#request.userId)")
+    public ResponseEntity<Todo> createTodo(@RequestBody CreateTodoRequest request) {
+        // Implementation
+    }
+}
+```
+
+### Безопасность данных
+- **Encryption at Rest**: шифрование данных в БД
+- **Encryption in Transit**: TLS для всех соединений
+- **Secrets Management**: безопасное хранение секретов
+- **Input Validation**: валидация всех входных данных
+
+### Аудит и мониторинг
+- **Audit Trail**: полный журнал действий
+- **Security Events**: мониторинг подозрительной активности
+- **Rate Limiting**: защита от злоупотреблений
+- **Circuit Breaker**: защита от каскадных сбоев
+
+---
+
+## 13. Тестирование
+
+### Стратегия тестирования
+```java
+// Unit Tests
+@Test
+void shouldCreateTodoWhenValidRequest() {
+    // Given
+    CreateTodoRequest request = new CreateTodoRequest("Test task");
+    
+    // When
+    Todo result = todoService.createTodo(request);
+    
+    // Then
+    assertThat(result.getTitle()).isEqualTo("Test task");
+    assertThat(result.getStatus()).isEqualTo(TodoStatus.PENDING);
+}
+
+// Integration Tests
+@SpringBootTest
+@Testcontainers
+class TodoServiceIntegrationTest {
+    
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
+    
+    @Test
+    void shouldPersistTodoInDatabase() {
+        // Test with real database
+    }
+}
+```
+
+### Типы тестов
+- **Unit Tests**: изолированное тестирование компонентов
+- **Integration Tests**: тестирование взаимодействия сервисов
+- **Contract Tests**: тестирование API контрактов
+- **E2E Tests**: полные пользовательские сценарии
+
+### Покрытие кода
+- **Minimum Coverage**: 80% для критических компонентов
+- **Mutation Testing**: проверка качества тестов
+- **Performance Tests**: нагрузочное тестирование
+- **Security Tests**: тестирование безопасности
+
+---
+
+## 14. Производительность
+
+### Оптимизации
+- **Connection Pooling**: пулы соединений к БД
+- **Caching**: Redis кэш для частых запросов
+- **Async Processing**: асинхронная обработка
+- **Resource Limits**: ограничения ресурсов
+
+### Мониторинг производительности
+```yaml
+# Performance Metrics
+response_time_p95_seconds
+throughput_requests_per_second
+error_rate_percentage
+resource_utilization_percentage
+```
+
+### Масштабирование
+- **Horizontal Scaling**: масштабирование сервисов
+- **Load Balancing**: балансировка нагрузки
+- **Auto Scaling**: автоматическое масштабирование
+- **Circuit Breaker**: защита от перегрузки
+
+---
+
+## Заключение
+
+Данное техническое видение обеспечивает:
+- **Multi-Platform архитектуру** с поддержкой Desktop (Windows/Linux) и Mobile (Android)
+- **Гибридную обработку** с офлайн и онлайн режимами
+- **Полную интеграцию с PC** через Rust системные вызовы
+- **Микросервисную архитектуру** с четким разделением ответственности
+- **Масштабируемость** через event-driven архитектуру
+- **Надежность** через мониторинг и тестирование
+- **Безопасность** через многоуровневую защиту
+- **Производительность** через оптимизации и кэширование
+
+**Помни**: детали архитектуры и принципов — в [vision.md](./vision.md).
+

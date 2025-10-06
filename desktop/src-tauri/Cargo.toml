@@ -1,0 +1,95 @@
+[package]
+name = "smartjarvis-desktop"
+version = "0.1.0"
+description = "SmartJARVIS Desktop Application"
+authors = ["SmartJARVIS Team"]
+license = "Proprietary"
+repository = "https://github.com/smartjarvis/smart-jarvis"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "smartjarvis_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.4.1", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.8.5", features = [] }
+tauri-plugin-log = "2.0"
+
+# HTTP клиент для коммуникации с Java сервисами
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1.0", features = ["full"] }
+
+# gRPC клиент
+tonic = "0.12"
+prost = "0.13"
+
+# Утилиты для API клиента
+uuid = { version = "1.0", features = ["v4", "serde"] }
+futures = "0.3"
+bytes = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+# JWT аутентификация
+jsonwebtoken = "9.2"
+base64 = "0.22"
+
+# WebSocket клиент
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+url = "2.5"
+
+# PC интеграция
+sysinfo = "0.37"
+dirs = "5.0"
+walkdir = "2.5"
+# Архивы
+zip = "0.6"
+tar = "0.4"
+flate2 = "1.0"
+# Поиск файлов
+glob = "0.3"
+ignore = "0.4"
+# Управление окнами и скриншоты
+screenshots = "0.6"
+
+# Аудио обработка
+cpal = "0.15"
+hound = "3.5"
+# Дополнительные аудио зависимости
+rodio = "0.19"
+wav = "0.1"
+
+# Wake word detection
+porcupine = "0.2"
+# Дополнительные зависимости для wake word
+ringbuf = "0.4"
+
+# Утилиты
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Интеграция из Priler/jarvis проекта
+# STT система
+vosk = "0.2"
+# Wake word detection - временно отключено из-за проблем с версиями
+# rustpotter = "1.0"
+# Аудио библиотеки
+kira = "0.8"
+# Конфигурация и сериализация
+serde_yaml = "0.9"
+seqdiff = "0.3"
+rand = "0.8"
+once_cell = "1.18"
+platform-dirs = "0.3"
+simple-log = "1.6"
+# tray-icon = { version = "0.5" } # временно отключено из-за конфликтов GTK
+# winit = "0.28" # временно отключено из-за зависимостей

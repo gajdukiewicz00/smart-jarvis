@@ -1,0 +1,52 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "TTSRequestEvent",
+  "doc": "Event requesting text-to-speech synthesis",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Unique session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "text",
+      "type": "string",
+      "doc": "Text to be synthesized"
+    },
+    {
+      "name": "voice",
+      "type": "string",
+      "default": "ruslan",
+      "doc": "Voice model to use"
+    },
+    {
+      "name": "speed",
+      "type": "float",
+      "default": 1.0,
+      "doc": "Speech speed multiplier"
+    },
+    {
+      "name": "ssml",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "SSML markup for advanced synthesis"
+    },
+    {
+      "name": "priority",
+      "type": "int",
+      "default": 1,
+      "doc": "Request priority (1=low, 5=high)"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Unix timestamp in milliseconds"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "BargeInEvent",
+  "doc": "Event when user interrupts TTS with voice",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Barge-in timestamp"
+    },
+    {
+      "name": "reason",
+      "type": "string",
+      "default": "voice_detected",
+      "doc": "Reason for barge-in"
+    },
+    {
+      "name": "audioEnergy",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Audio energy level that triggered barge-in"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "NluIntent",
+  "namespace": "ai.smartjarvis.v1",
+  "doc": "Detected intent and slots from NLU layer",
+  "fields": [
+    { "name": "messageVersion", "type": "int", "default": 1 },
+    { "name": "timestamp", "type": "long", "doc": "event time epoch millis" },
+    { "name": "errors", "type": {"type": "array", "items": "string"}, "default": [] },
+
+    { "name": "correlationId", "type": "string" },
+    { "name": "sessionId", "type": "string" },
+
+    { "name": "intent", "type": {"type": "enum", "name": "IntentType", "symbols": [
+      "GREETING", "ECHO", "TIME_NOW", "WEATHER_SIMPLE", "UNKNOWN"
+    ]}},
+    { "name": "slots", "type": {"type": "map", "values": "string"}, "default": {} },
+    { "name": "confidence", "type": "float" },
+    { "name": "lang", "type": "string", "doc": "BCP-47 language tag" },
+    { "name": "text", "type": ["null", "string"], "default": null }
+  ]
+}
+

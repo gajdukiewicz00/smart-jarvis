@@ -1,0 +1,547 @@
+version: '3.8'
+
+services:
+  # Message Broker Stack
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: smartjarvis-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'ruok' | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: smartjarvis-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    healthcheck:
+      test: ["CMD", "bash", "-c", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.4.0
+    hostname: schema-registry
+    container_name: smartjarvis-schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:29092'
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Database Stack
+  postgres:
+    image: postgres:15-alpine
+    hostname: postgres
+    container_name: smartjarvis-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: smartjarvis
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: secret
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d smartjarvis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: smartjarvis-redis
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes --requirepass secret
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  mongodb:
+    image: mongo:7.0
+    hostname: mongodb
+    container_name: smartjarvis-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: jarvis
+      MONGO_INITDB_ROOT_PASSWORD: secret
+      MONGO_INITDB_DATABASE: smartjarvis
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:v2.44.0
+    hostname: prometheus
+    container_name: smartjarvis-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  grafana:
+    image: grafana/grafana:10.0.0
+    hostname: grafana
+    container_name: smartjarvis-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=secret
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Exporters
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    hostname: kafka-exporter
+    container_name: smartjarvis-kafka-exporter
+    command:
+      - '--kafka.server=kafka:29092'
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    hostname: redis-exporter
+    container_name: smartjarvis-redis-exporter
+    environment:
+      - REDIS_ADDR=redis://:secret@redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    hostname: postgres-exporter
+    container_name: smartjarvis-postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://jarvis:secret@postgres:5432/smartjarvis?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.40.0
+    hostname: mongodb-exporter
+    container_name: smartjarvis-mongodb-exporter
+    environment:
+      - MONGODB_URI=mongodb://jarvis:secret@mongodb:27017
+    ports:
+      - "9216:9216"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - smartjarvis-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.47
+    hostname: jaeger
+    container_name: smartjarvis-jaeger
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # STT Service
+  stt-service:
+    build:
+      context: ../../services/stt-service
+      dockerfile: Dockerfile
+    hostname: stt-service
+    container_name: smartjarvis-stt-service
+    ports:
+      - "8082:8082"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+      - WHISPER_MODEL_SIZE=small
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE_TYPE=int8
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # NLU Service  
+  nlu-service:
+    build:
+      context: ../../services/nlu-service
+      dockerfile: Dockerfile
+    hostname: nlu-service
+    container_name: smartjarvis-nlu-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # DM Service
+  dm-service:
+    build:
+      context: ../../services/dm-service
+      dockerfile: Dockerfile
+    hostname: dm-service
+    container_name: smartjarvis-dm-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # TTS Service
+  tts-service:
+    build:
+      context: ../../services/tts-service
+      dockerfile: Dockerfile
+    hostname: tts-service
+    container_name: smartjarvis-tts-service
+    ports:
+      - "8085:8085"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Todo Service
+  todo-service:
+    build:
+      context: ../../services/todo-service
+      dockerfile: Dockerfile
+    hostname: todo-service
+    container_name: smartjarvis-todo-service
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MONGODB_URI=mongodb://jarvis:secret@mongodb:27017/smartjarvis
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Device Agent Service
+  device-agent:
+    build:
+      context: ../../services/device-agent
+      dockerfile: Dockerfile
+    hostname: device-agent
+    container_name: smartjarvis-device-agent
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    # For real device control, uncomment these:
+    # network_mode: "host"
+    # privileged: true
+    volumes:
+      - /tmp:/host/tmp  # For screenshot access
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Home Bridge Service - DISABLED
+  # home-bridge:
+  #   build:
+  #     context: ../../services/home-bridge
+  #     dockerfile: Dockerfile
+  #   hostname: home-bridge
+  #   container_name: smartjarvis-home-bridge
+  #   ports:
+  #     - "8088:8088"
+  #   environment:
+  #     - SPRING_PROFILES_ACTIVE=docker
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+  #     - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+  #     - HA_URL=${HA_URL:-http://host.docker.internal:8123}
+  #     - HA_TOKEN=${HA_TOKEN:-your_token_here}
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     schema-registry:
+  #       condition: service_healthy
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - smartjarvis-network
+
+  # Money Service
+  money-service:
+    build:
+      context: ../../services/money-service
+      dockerfile: Dockerfile
+    hostname: money-service
+    container_name: smartjarvis-money-service
+    ports:
+      - "8089:8089"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - MONGODB_URI=mongodb://jarvis:secret@mongodb:27017/smartjarvis
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+  # Web UI (removed)
+  # web:
+  #   build:
+  #     context: ../../web
+  #     dockerfile: Dockerfile
+  #   hostname: web
+  #   container_name: smartjarvis-web
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - voice-gateway
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   networks:
+  #     - smartjarvis-network
+
+  # Voice Gateway Service
+  voice-gateway:
+    container_name: smartjarvis-voice-gateway-2
+    build:
+      context: ../../services/voice-gateway
+      dockerfile: Dockerfile
+    hostname: voice-gateway
+    ports:
+      - "8090:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+      - POSTGRES_URL=jdbc:postgresql://postgres:5432/smartjarvis
+      - POSTGRES_USERNAME=jarvis
+      - POSTGRES_PASSWORD=secret
+      - REDIS_URL=redis://:secret@redis:6379
+      - JAEGER_ENDPOINT=http://jaeger:14250
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartjarvis-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  smartjarvis-network:
+    driver: bridge
+    name: smartjarvis-network

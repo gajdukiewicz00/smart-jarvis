@@ -1,0 +1,96 @@
+spring:
+  application:
+    name: home-bridge
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  # Kafka configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    schema-registry:
+      url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    consumer:
+      group-id: home-bridge
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        specific.avro.reader: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      properties:
+        schema.registry.url: ${spring.kafka.schema-registry.url}
+        acks: all
+        retries: 3
+        enable.idempotence: true
+
+# Server configuration
+server:
+  port: ${SERVER_PORT:8088}
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      service: home-bridge
+
+# Logging
+logging:
+  level:
+    com.smartjarvis: ${LOG_LEVEL:INFO}
+    org.springframework.kafka: WARN
+
+# Home Assistant Configuration
+smartjarvis:
+  home-assistant:
+    url: "${HA_URL:http://localhost:8123}"
+    token: "${HA_TOKEN:your_long_lived_access_token_here}"
+    timeout: 10000  # 10 seconds
+    retry-attempts: 3
+    # entities: # Используются значения по умолчанию из Java кода
+        роутер: "switch.router_power"
+
+---
+# Docker profile
+spring:
+  config:
+    activate:
+      on-profile: docker
+  kafka:
+    bootstrap-servers: kafka:29092
+    schema-registry:
+      url: http://schema-registry:8081
+
+smartjarvis:
+  home-assistant:
+    url: "http://host.docker.internal:8123"
+
+---
+# Test profile
+spring:
+  config:
+    activate:
+      on-profile: test
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+
+smartjarvis:
+  home-assistant:
+    url: "http://localhost:8123"
+    token: "test_token"
+
+logging:
+  level:
+    com.smartjarvis: DEBUG

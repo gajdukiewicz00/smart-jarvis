@@ -1,0 +1,26 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SmartJARVIS
+Comment=Персональный голосовой ассистент с поддержкой PC интеграции
+Exec=smartjarvis-desktop
+Icon=smartjarvis-desktop
+Terminal=false
+StartupNotify=true
+StartupWMClass=smartjarvis-desktop
+Categories=Utility;AudioVideo;Office;Network;
+Keywords=assistant;voice;ai;jarvis;smart;desktop;
+MimeType=application/x-smartjarvis;
+Actions=Start;Stop;Settings;
+
+[Desktop Action Start]
+Name=Запустить SmartJARVIS
+Exec=smartjarvis-desktop --start
+
+[Desktop Action Stop]
+Name=Остановить SmartJARVIS
+Exec=smartjarvis-desktop --stop
+
+[Desktop Action Settings]
+Name=Настройки SmartJARVIS
+Exec=smartjarvis-desktop --settings

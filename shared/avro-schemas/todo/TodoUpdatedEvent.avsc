@@ -1,0 +1,43 @@
+{
+  "namespace": "com.smartjarvis.events.todo",
+  "type": "record",
+  "name": "TodoUpdatedEvent",
+  "doc": "Событие обновления задачи",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "todoId",
+      "type": "string",
+      "doc": "Идентификатор задачи"
+    },
+    {
+      "name": "changes",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "Изменения в задаче"
+    },
+    {
+      "name": "previousState",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Предыдущее состояние задачи (JSON)"
+    },
+    {
+      "name": "newState",
+      "type": "string",
+      "doc": "Новое состояние задачи (JSON)"
+    },
+    {
+      "name": "updateReason",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Причина обновления"
+    }
+  ]
+}

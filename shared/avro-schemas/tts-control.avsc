@@ -1,0 +1,38 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "TTSControlEvent",
+  "doc": "Event for controlling TTS playback",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "action",
+      "type": {
+        "type": "enum",
+        "name": "TTSAction",
+        "symbols": ["START", "STOP", "PAUSE", "RESUME"]
+      },
+      "doc": "TTS control action"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Control event timestamp"
+    },
+    {
+      "name": "reason",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Reason for control action"
+    }
+  ]
+}

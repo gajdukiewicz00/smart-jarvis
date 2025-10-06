@@ -1,0 +1,51 @@
+list:
+- command:
+    action: cli
+    cli_cmd: amixer
+    cli_args:
+    - set
+    - Master
+    - 50%
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+  phrases:
+  - установи громкость 50
+  - громкость 50 процентов
+  - звук 50
+
+- command:
+    action: cli
+    cli_cmd: amixer
+    cli_args:
+    - set
+    - Master
+    - mute
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+  phrases:
+  - выключи звук
+  - заглуши звук
+  - mute
+
+- command:
+    action: cli
+    cli_cmd: amixer
+    cli_args:
+    - set
+    - Master
+    - unmute
+  voice:
+    sounds:
+    - ok1
+    - ok2
+    - ok3
+  phrases:
+  - включи звук
+  - разблокируй звук
+  - unmute

@@ -1,0 +1,45 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "WebSocketConnectionEvent",
+  "doc": "Event when WebSocket connection is established or closed",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Unique session identifier"
+    },
+    {
+      "name": "userId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "User identifier (if authenticated)"
+    },
+    {
+      "name": "eventType",
+      "type": {
+        "type": "enum",
+        "name": "ConnectionEventType",
+        "symbols": ["CONNECTED", "DISCONNECTED", "ERROR"]
+      },
+      "doc": "Type of connection event"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Unix timestamp in milliseconds"
+    },
+    {
+      "name": "clientInfo",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Client information (User-Agent, etc.)"
+    },
+    {
+      "name": "errorMessage",
+      "type": ["null", "string"], 
+      "default": null,
+      "doc": "Error message if eventType is ERROR"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+spring:
+  application:
+    name: voice-gateway
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  
+  # Database Configuration
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/smartjarvis}
+    username: ${DATABASE_USERNAME:jarvis}
+    password: ${DATABASE_PASSWORD:jarvis_secret_2024}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: voice-gateway
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+
+# Server Configuration
+server:
+  port: ${VOICE_GATEWAY_PORT:8081}
+
+# Management Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging Configuration
+logging:
+  level:
+    com.smartjarvis: ${LOG_LEVEL:INFO}
+    org.springframework.kafka: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{correlationId}] %logger{36} - %msg%n"
+
+# WebSocket Configuration
+websocket:
+  allowed-origins: "*"
+  max-sessions-per-user: 5
+  session-timeout: 300000 # 5 minutes
+
+# Audio Configuration
+audio:
+  sample-rate: 16000
+  channels: 1
+  bit-depth: 16
+  chunk-size: 1024
+  max-duration: 30000 # 30 seconds
+
+# External Services
+external:
+  services:
+    stt-service:
+      url: http://localhost:8082
+    nlu-service:
+      url: http://localhost:8083
+    dm-service:
+      url: http://localhost:8084
+    tts-service:
+      url: http://localhost:8085
+
+# Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      stt-service:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10
+      tts-service:
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        sliding-window-size: 10

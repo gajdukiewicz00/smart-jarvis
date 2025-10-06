@@ -1,0 +1,72 @@
+{
+  "namespace": "com.smartjarvis.events.todo",
+  "type": "record",
+  "name": "TodoCreatedEvent",
+  "doc": "Событие создания задачи",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "todoId",
+      "type": "string",
+      "doc": "Идентификатор задачи"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "doc": "Название задачи"
+    },
+    {
+      "name": "description",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Описание задачи"
+    },
+    {
+      "name": "priority",
+      "type": {
+        "type": "enum",
+        "name": "TodoPriority",
+        "symbols": ["LOW", "MEDIUM", "HIGH", "URGENT"]
+      },
+      "default": "MEDIUM",
+      "doc": "Приоритет задачи"
+    },
+    {
+      "name": "dueDate",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Срок выполнения в миллисекундах"
+    },
+    {
+      "name": "category",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Категория задачи"
+    },
+    {
+      "name": "tags",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Теги задачи"
+    },
+    {
+      "name": "isRecurring",
+      "type": "boolean",
+      "default": false,
+      "doc": "Является ли задача повторяющейся"
+    },
+    {
+      "name": "recurrencePattern",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Паттерн повторения"
+    }
+  ]
+}

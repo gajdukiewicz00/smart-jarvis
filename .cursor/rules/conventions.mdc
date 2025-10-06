@@ -1,0 +1,384 @@
+---
+alwaysApply: true
+---
+
+## 1. Архитектурные принципы
+
+### ПОЛНАЯ МИКРОСЕРВИСНОСТЬ
+- **КАЖДАЯ ФУНКЦИЯ = ОТДЕЛЬНЫЙ СЕРВИС** — NO монолиты, NO shared libraries с бизнес-логикой
+- **Один сервис = одна доменная область** (todo, calendar, device-agent)
+- **Event-driven через Kafka** — все взаимодействие асинхронное
+- **CQRS** — команды и запросы разделены
+- **Hexagonal Architecture** — бизнес-логика изолирована от инфраструктуры
+
+---
+## 2. Код и стиль
+
+### Java/Kotlin
+- **Java 21** + **Spring Boot 3.x**
+- **Kotlin** для DSL и конфигураций
+- **Immutable objects** — все DTO/Entity неизменяемые
+- **Builder pattern** для сложных объектов
+- **Records** для простых DTO
+
+### Именование
+```java
+// Сервисы
+public class TodoService { }
+public class TodoController { }
+
+// События Kafka
+public class TodoCreatedEvent { }
+public class TodoUpdatedEvent { }
+
+// DTO
+public record CreateTodoRequest(String title, LocalDateTime dueDate) { }
+public record TodoResponse(String id, String title, TodoStatus status) { }
+```
+
+### Аннотации
+```java
+@RestController
+@RequestMapping("/api/v1/todos")
+@Validated
+@Slf4j
+public class TodoController {
+    
+    @PostMapping
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<TodoResponse> createTodo(
+        @Valid @RequestBody CreateTodoRequest request,
+        Authentication auth
+    ) {
+        // Implementation
+    }
+}
+```
+
+---
+
+## 3. Обработка событий
+
+### Kafka события
+```java
+@Component
+@Slf4j
+public class TodoEventHandler {
+    
+    @KafkaListener(topics = "todo.created")
+    public void handleTodoCreated(TodoCreatedEvent event) {
+        log.info("Processing todo created event: {}", event.getTodoId());
+        // Business logic
+    }
+}
+```
+
+### Avro схемы
+- Все события в `shared/avro-schemas/`
+- Версионирование через Schema Registry
+- Backward compatibility обязательна
+
+---
+
+## 4. Обработка ошибок
+
+### Исключения
+```java
+// Доменные исключения
+public class TodoNotFoundException extends DomainException {
+    public TodoNotFoundException(String todoId) {
+        super("Todo not found: " + todoId);
+    }
+}
+
+// Глобальный обработчик
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    @ExceptionHandler(TodoNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleTodoNotFound(TodoNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("TODO_NOT_FOUND", ex.getMessage()));
+    }
+}
+```
+
+### Валидация
+```java
+public record CreateTodoRequest(
+    @NotBlank @Size(max = 255) String title,
+    @Future LocalDateTime dueDate
+) { }
+```
+
+---
+
+## 5. Тестирование
+
+### Структура тестов
+```java
+@SpringBootTest
+@Testcontainers
+class TodoServiceTest {
+    
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
+    
+    @Test
+    void shouldCreateTodoWhenValidRequest() {
+        // Given
+        CreateTodoRequest request = new CreateTodoRequest("Test task", tomorrow());
+        
+        // When
+        TodoResponse result = todoService.createTodo(request);
+        
+        // Then
+        assertThat(result.title()).isEqualTo("Test task");
+        assertThat(result.status()).isEqualTo(TodoStatus.PENDING);
+    }
+}
+```
+
+### Правила тестирования
+- **TDD** — тесты пишутся до кода
+- **Testcontainers** для интеграционных тестов
+- **Mockito** для моков внешних зависимостей
+- **AssertJ** для читаемых assertions
+
+---
+
+## 6. Конфигурация
+
+### application.yml
+```yaml
+spring:
+  application:
+    name: todo-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      group-id: todo-service
+```
+
+### Переменные окружения
+- Все секреты через переменные окружения
+- Префикс `SMARTJARVIS_` для кастомных переменных
+- Валидация обязательных переменных при старте
+
+---
+
+## 7. Логгирование
+
+### Структура логов
+```java
+@Slf4j
+public class TodoService {
+    
+    public TodoResponse createTodo(CreateTodoRequest request) {
+        log.info("Creating todo: title={}", request.title());
+        
+        try {
+            TodoResponse result = // business logic
+            log.info("Todo created successfully: id={}", result.id());
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to create todo: title={}", request.title(), e);
+            throw e;
+        }
+    }
+}
+```
+
+### Правила логирования
+- **JSON формат** для всех логов
+- **Correlation ID** в каждом запросе
+- **PII redaction** — никаких персональных данных
+- **Structured logging** — объекты, а не строки
+
+---
+
+## 8. Безопасность
+
+### Аутентификация
+```java
+@PreAuthorize("@securityService.canAccessTodo(#todoId, authentication.name)")
+public TodoResponse getTodo(String todoId) {
+    // Implementation
+}
+```
+
+### Валидация
+- **@Valid** на всех входных параметрах
+- **@PreAuthorize** для авторизации
+- **Input sanitization** для всех пользовательских данных
+- **SQL injection protection** через JPA/Hibernate
+
+---
+
+## 9. Производительность
+
+### Кэширование
+```java
+@Service
+public class TodoService {
+    
+    @Cacheable(value = "todos", key = "#todoId")
+    public TodoResponse getTodo(String todoId) {
+        // Implementation
+    }
+    
+    @CacheEvict(value = "todos", key = "#todoId")
+    public void updateTodo(String todoId, UpdateTodoRequest request) {
+        // Implementation
+    }
+}
+```
+
+### Асинхронность
+```java
+@Async
+@EventListener
+public void handleTodoCreated(TodoCreatedEvent event) {
+    // Async processing
+}
+```
+
+---
+
+## 10. Мониторинг
+
+### Метрики
+```java
+@Component
+public class TodoMetrics {
+    
+    private final Counter todoCreatedCounter;
+    private final Timer todoProcessingTimer;
+    
+    public TodoMetrics(MeterRegistry meterRegistry) {
+        this.todoCreatedCounter = Counter.builder("todos.created")
+            .register(meterRegistry);
+        this.todoProcessingTimer = Timer.builder("todos.processing.time")
+            .register(meterRegistry);
+    }
+}
+```
+
+### Трассировка
+```java
+@NewSpan("create-todo")
+public TodoResponse createTodo(CreateTodoRequest request) {
+    Span.current().setAttribute("todo.title", request.title());
+    // Implementation
+}
+```
+
+---
+
+## 11. Docker
+
+### Dockerfile
+```dockerfile
+FROM openjdk:21-jre-slim
+
+WORKDIR /app
+COPY target/todo-service.jar app.jar
+
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+### Правила
+- **Multi-stage builds** для оптимизации размера
+- **Non-root user** для безопасности
+- **Health checks** для всех сервисов
+- **Resource limits** в docker-compose
+
+---
+
+## 12. Git и коммиты
+
+### Conventional Commits
+```
+feat: add todo creation endpoint
+fix: resolve memory leak in todo service
+docs: update API documentation
+test: add integration tests for todo service
+refactor: extract todo validation logic
+```
+
+### Правила
+- **One commit = one logical change**
+- **Meaningful commit messages**
+- **No secrets in commits**
+- **Rebase before merge**
+
+---
+
+## 13. Code Review
+
+### Checklist
+- [ ] Код следует архитектурным принципам
+- [ ] Тесты покрывают новую функциональность
+- [ ] Логирование добавлено где нужно
+- [ ] Безопасность проверена
+- [ ] Производительность учтена
+- [ ] Документация обновлена
+
+### Правила
+- **Все изменения через PR**
+- **Минимум 1 reviewer**
+- **Автоматические проверки проходят**
+- **Конфликты разрешены**
+- **NO лицензии** - проект закрытый, лицензия добавится позже
+
+---
+
+## 14. Документация
+
+### README.md для сервиса
+```markdown
+# Todo Service
+
+## Описание
+Управление задачами пользователей.
+
+## API
+- POST /api/v1/todos - создать задачу
+- GET /api/v1/todos/{id} - получить задачу
+
+## Запуск
+```bash
+docker-compose up todo-service
+```
+
+## Тестирование
+```bash
+mvn test
+```
+```
+
+### Правила
+- **README.md** для каждого сервиса
+- **API документация** через OpenAPI
+- **Архитектурные решения** в ADR
+- **Обновление документации** с кодом
+
+---
+
+## Заключение
+
+Эти правила обеспечивают:
+- **Консистентность** кода между сервисами
+- **Качество** через тестирование и ревью
+- **Безопасность** на всех уровнях
+- **Производительность** через оптимизации
+- **Наблюдаемость** через логи и метрики
+
+**Помни**: детали архитектуры и принципов — в [vision.md](./vision.md).

@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "TtsRequest",
+  "namespace": "ai.smartjarvis.v1",
+  "doc": "Request to synthesize speech from text or SSML",
+  "fields": [
+    { "name": "messageVersion", "type": "int", "default": 1 },
+    { "name": "timestamp", "type": "long", "doc": "event time epoch millis" },
+    { "name": "errors", "type": {"type": "array", "items": "string"}, "default": [] },
+
+    { "name": "correlationId", "type": "string" },
+    { "name": "sessionId", "type": "string" },
+
+    { "name": "text", "type": ["null", "string"], "default": null },
+    { "name": "ssml", "type": ["null", "string"], "default": null },
+    { "name": "voice", "type": ["null", "string"], "default": null }
+  ]
+}
+

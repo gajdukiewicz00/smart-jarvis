@@ -1,0 +1,22 @@
+{
+  "type": "record",
+  "name": "SttPartial",
+  "namespace": "ai.smartjarvis.v1",
+  "doc": "Streaming partial STT hypothesis emitted periodically during speech recognition",
+  "fields": [
+    { "name": "messageVersion", "type": "int", "default": 1 },
+    { "name": "timestamp", "type": "long", "doc": "event time epoch millis" },
+    { "name": "errors", "type": {"type": "array", "items": "string"}, "default": [] },
+
+    { "name": "correlationId", "type": "string" },
+    { "name": "sessionId", "type": "string" },
+
+    { "name": "text", "type": "string" },
+    { "name": "startMs", "type": "long", "doc": "relative to session start" },
+    { "name": "endMs", "type": "long", "doc": "relative to session start" },
+    { "name": "confidence", "type": "float" },
+    { "name": "lang", "type": "string", "doc": "BCP-47 language tag, e.g. en-US" },
+    { "name": "isFinal", "type": "boolean", "default": false }
+  ]
+}
+

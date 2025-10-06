@@ -1,0 +1,48 @@
+{
+  "namespace": "com.smartjarvis.events.todo",
+  "type": "record",
+  "name": "TodoCompletedEvent",
+  "doc": "Событие завершения задачи",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "todoId",
+      "type": "string",
+      "doc": "Идентификатор задачи"
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "doc": "Название задачи"
+    },
+    {
+      "name": "completionTime",
+      "type": "long",
+      "doc": "Время завершения в миллисекундах"
+    },
+    {
+      "name": "wasOnTime",
+      "type": "boolean",
+      "doc": "Была ли задача завершена вовремя"
+    },
+    {
+      "name": "completionMethod",
+      "type": {
+        "type": "enum",
+        "name": "CompletionMethod",
+        "symbols": ["MANUAL", "AUTOMATIC", "VOICE_COMMAND", "SCHEDULED"]
+      },
+      "doc": "Способ завершения задачи"
+    },
+    {
+      "name": "notes",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Заметки о завершении"
+    }
+  ]
+}

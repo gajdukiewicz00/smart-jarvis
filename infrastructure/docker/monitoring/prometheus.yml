@@ -1,0 +1,71 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Voice Gateway Service
+  - job_name: 'voice-gateway'
+    static_configs:
+      - targets: ['voice-gateway:8080']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+
+  # Kafka JMX Metrics
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9101']
+
+  # Exporters (HTTP endpoints)
+  - job_name: 'kafka-exporter'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+    scrape_interval: 10s
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 10s
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 10s
+
+  - job_name: 'mongodb-exporter'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+    scrape_interval: 10s
+
+  # Future microservices
+  - job_name: 'stt-service'
+    static_configs:
+      - targets: ['stt-service:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'nlu-service'
+    static_configs:
+      - targets: ['nlu-service:8083']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+
+  - job_name: 'dm-service'
+    static_configs:
+      - targets: ['dm-service:8084']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+
+  - job_name: 'tts-service'
+    static_configs:
+      - targets: ['tts-service:8085']
+    metrics_path: '/metrics'
+    scrape_interval: 5s

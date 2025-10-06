@@ -1,0 +1,45 @@
+{
+  "namespace": "com.smartjarvis.events",
+  "type": "record",
+  "name": "STTTranscriptEvent",
+  "doc": "Event when speech is transcribed to text",
+  "fields": [
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "Unique session identifier"
+    },
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "User identifier"
+    },
+    {
+      "name": "transcript",
+      "type": "string",
+      "doc": "Transcribed text from speech"
+    },
+    {
+      "name": "confidence",
+      "type": "float",
+      "doc": "Transcription confidence score (0.0 to 1.0)"
+    },
+    {
+      "name": "language",
+      "type": "string",
+      "default": "ru",
+      "doc": "Detected language code"
+    },
+    {
+      "name": "duration",
+      "type": ["null", "float"],
+      "default": null,
+      "doc": "Audio duration in seconds"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Unix timestamp in milliseconds"
+    }
+  ]
+}

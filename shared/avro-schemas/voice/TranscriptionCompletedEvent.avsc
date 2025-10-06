@@ -1,0 +1,41 @@
+{
+  "namespace": "com.smartjarvis.events.voice",
+  "type": "record",
+  "name": "TranscriptionCompletedEvent",
+  "doc": "Событие завершения транскрипции",
+  "fields": [
+    {
+      "name": "baseEvent",
+      "type": "com.smartjarvis.events.common.BaseEvent",
+      "doc": "Базовое событие"
+    },
+    {
+      "name": "transcription",
+      "type": "string",
+      "doc": "Транскрибированный текст"
+    },
+    {
+      "name": "confidence",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Уверенность в транскрипции (0.0-1.0)"
+    },
+    {
+      "name": "language",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Определенный язык"
+    },
+    {
+      "name": "processingTimeMs",
+      "type": "long",
+      "doc": "Время обработки в миллисекундах"
+    },
+    {
+      "name": "model",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Использованная модель STT"
+    }
+  ]
+}
